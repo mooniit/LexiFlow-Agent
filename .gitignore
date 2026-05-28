@@ -1,0 +1,25 @@
+# Build outputs
+target/
+build/
+dist/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Runtime files
+logs/
+storage/contracts/*
+storage/knowledge/*
+!storage/contracts/.gitkeep
+!storage/knowledge/.gitkeep
+
+# Environment
+.env
+
+# OS
+Thumbs.db
+.DS_Store
+

@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: lexiflow-agent
+  profiles:
+    active: dev
+  threads:
+    virtual:
+      enabled: true
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+lexiflow:
+  storage:
+    contracts-dir: ../storage/contracts
+    knowledge-dir: ../storage/knowledge
+  rabbitmq:
+    queues:
+      - contract.review.queue
+      - document.ingest.queue
+      - tool.retry.queue
+      - approval.event.queue
+      - notification.queue
+

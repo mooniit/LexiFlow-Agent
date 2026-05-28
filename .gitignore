@@ -4,6 +4,9 @@ build/
 dist/
 out/
 node_modules/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
 
 # IDE
 .idea/
@@ -19,6 +22,7 @@ storage/knowledge/*
 
 # Environment
 .env
+.npm-cache/
 
 # OS
 Thumbs.db

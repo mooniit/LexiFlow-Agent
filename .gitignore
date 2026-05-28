@@ -23,7 +23,12 @@ storage/knowledge/*
 # Environment
 .env
 .npm-cache/
+.claude/
 
 # OS
 Thumbs.db
 .DS_Store
+
+# 自用说明
+企业合同与合规审查-Agent-项目功能说明.md
+Agent应用-技术文档.md

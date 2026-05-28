@@ -3,6 +3,7 @@ target/
 build/
 dist/
 out/
+node_modules/
 
 # IDE
 .idea/
@@ -22,4 +23,3 @@ storage/knowledge/*
 # OS
 Thumbs.db
 .DS_Store
-

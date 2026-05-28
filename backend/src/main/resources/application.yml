@@ -27,6 +27,13 @@ mybatis-plus:
     map-underscore-to-camel-case: true
 
 lexiflow:
+  security:
+    jwt:
+      issuer: lexiflow-agent
+      secret: "change-me-change-me-change-me-change-me-change-me"
+      expires-minutes: 480
+  llm:
+    provider: mock
   storage:
     contracts-dir: ../storage/contracts
     knowledge-dir: ../storage/knowledge
@@ -37,4 +44,3 @@ lexiflow:
       - tool.retry.queue
       - approval.event.queue
       - notification.queue
-

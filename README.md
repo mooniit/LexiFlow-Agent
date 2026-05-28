@@ -48,6 +48,20 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev
 GET http://localhost:8080/api/actuator/health
 ```
 
+## 启动前端
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+前端地址：
+
+```text
+http://localhost:5173
+```
+
 RabbitMQ 管理台：
 
 ```text
@@ -62,4 +76,3 @@ password: lexiflow
 cd backend
 mvn test
 ```
-

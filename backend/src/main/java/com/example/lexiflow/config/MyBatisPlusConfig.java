@@ -8,7 +8,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@MapperScan("com.example.lexiflow.user.mapper")
+@MapperScan({
+        "com.example.lexiflow.user.mapper",
+        "com.example.lexiflow.contract.mapper",
+        "com.example.lexiflow.review.mapper",
+        "com.example.lexiflow.rag.mapper"
+})
 public class MyBatisPlusConfig {
 
     @Bean

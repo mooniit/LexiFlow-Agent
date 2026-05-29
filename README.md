@@ -29,31 +29,46 @@ Docker Desktop / Docker Compose
 
 当前仓库按 Java 21 配置。若本机仍是 Java 17，需要先安装或切换到 Java 21。
 
-## 启动中间件
+## 一键启动顺序
+
+### 1. 启动中间件
 
 ```bash
 docker compose up -d postgres redis rabbitmq
 ```
 
-## 启动后端
+### 2. 启动后端
 
 ```bash
 cd backend
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-健康检查：
+### 3. 检查健康状态
 
 ```text
 GET http://localhost:8080/api/actuator/health
+GET http://localhost:8080/api/actuator/health/readiness
+GET http://localhost:8080/api/actuator/metrics
 ```
 
-## 启动前端
+健康检查覆盖：
+
+```text
+application
+PostgreSQL
+Redis
+RabbitMQ
+diskSpace
+readiness/liveness probes
+```
+
+### 4. 启动前端
 
 ```bash
 cd frontend
-npm install
-npm run dev
+npm.cmd install
+npm.cmd run dev
 ```
 
 前端地址：
@@ -75,4 +90,27 @@ password: lexiflow
 ```bash
 cd backend
 mvn test
+```
+
+前端构建：
+
+```bash
+cd frontend
+npm.cmd run build
+```
+
+## 常用本地地址
+
+```text
+后端 API: http://localhost:8080/api
+Actuator: http://localhost:8080/api/actuator
+前端: http://localhost:5173
+RabbitMQ 管理台: http://localhost:15672
+```
+
+## 默认开发账号
+
+```text
+username: admin
+password: admin123
 ```

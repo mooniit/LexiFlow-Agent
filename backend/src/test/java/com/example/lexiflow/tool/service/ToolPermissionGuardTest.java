@@ -36,6 +36,32 @@ class ToolPermissionGuardTest {
                 .hasMessageContaining("disabled");
     }
 
+    @Test
+    void blocksApprovalRequiredToolWithoutApprovalPermission() {
+        ToolPermissionGuard guard = new ToolPermissionGuard(mapperReturning(config("approval_request", "tool:execute", true, true)));
+
+        Assertions.assertThatThrownBy(() -> guard.requireAllowed("approval_request", user(List.of("tool:execute"))))
+                .isInstanceOf(ToolPermissionDeniedException.class)
+                .hasMessageContaining("approval permission");
+    }
+
+    @Test
+    void allowsApprovalRequiredToolWithApprovalPermission() {
+        ToolPermissionGuard guard = new ToolPermissionGuard(mapperReturning(config("approval_request", "tool:execute", true, true)));
+
+        Assertions.assertThatCode(() -> guard.requireAllowed("approval_request", user(List.of("tool:execute", "approval:write"))))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void blocksUnregisteredTool() {
+        ToolPermissionGuard guard = new ToolPermissionGuard(mapperReturning(null));
+
+        Assertions.assertThatThrownBy(() -> guard.requireAllowed("unknown", user(List.of("tool:execute"))))
+                .isInstanceOf(ToolPermissionDeniedException.class)
+                .hasMessageContaining("not registered");
+    }
+
     private ReviewToolConfig config(String name, String permission, boolean enabled, boolean approvalRequired) {
         ReviewToolConfig config = new ReviewToolConfig();
         config.setToolName(name);

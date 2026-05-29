@@ -5,6 +5,7 @@ import static com.example.lexiflow.agent.model.AgentTaskStatus.CANCELLED;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.COMPLETED;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.CREATED;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.EXTRACTING;
+import static com.example.lexiflow.agent.model.AgentTaskStatus.FAILED;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.GENERATING_REPORT;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.PARSING;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.RETRIEVING_RULES;
@@ -38,5 +39,17 @@ class AgentStateMachineTest {
                 .isInstanceOf(InvalidAgentTransitionException.class);
         Assertions.assertThat(stateMachine.canTransit(CANCELLED, PARSING)).isFalse();
     }
-}
 
+    @Test
+    void allowsFailureAndRetryFromParsing() {
+        Assertions.assertThat(stateMachine.canTransit(PARSING, FAILED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(FAILED, PARSING)).isTrue();
+    }
+
+    @Test
+    void allowsCancellationBeforeTerminalState() {
+        Assertions.assertThat(stateMachine.canTransit(CREATED, CANCELLED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(ANALYZING, CANCELLED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(GENERATING_REPORT, CANCELLED)).isTrue();
+    }
+}

@@ -3,7 +3,9 @@ package com.example.lexiflow.llm.service;
 import com.example.lexiflow.llm.model.ChatMessage;
 import com.example.lexiflow.llm.model.ChatRequest;
 import com.example.lexiflow.llm.model.EmbeddingRequest;
+import com.example.lexiflow.llm.model.StructuredOutputRequest;
 import com.example.lexiflow.llm.model.ToolCallRequest;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.assertj.core.api.Assertions;
@@ -41,5 +43,34 @@ class MockLlmGatewayTest {
         );
 
         Assertions.assertThat(gateway.toolCalling(request).toolName()).isEqualTo("contract_parse");
+    }
+
+    @Test
+    void returnsStructuredOutputEnvelope() {
+        ChatRequest chatRequest = new ChatRequest(
+                "clause-extraction",
+                null,
+                List.of(new ChatMessage(ChatMessage.Role.USER, "Extract clauses")),
+                Map.of()
+        );
+
+        Assertions.assertThat(gateway.structuredOutput(new StructuredOutputRequest(chatRequest, Map.of())).data())
+                .containsEntry("scenario", "clause-extraction")
+                .containsEntry("mock", true);
+    }
+
+    @Test
+    void streamsChatTokensInOrder() {
+        ChatRequest request = new ChatRequest(
+                "stream",
+                null,
+                List.of(new ChatMessage(ChatMessage.Role.USER, "hello world")),
+                Map.of()
+        );
+        List<String> tokens = new ArrayList<>();
+
+        gateway.streamChat(request, tokens::add);
+
+        Assertions.assertThat(String.join(" ", tokens)).contains("hello world");
     }
 }

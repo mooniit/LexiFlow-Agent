@@ -64,6 +64,16 @@ public class ContractReviewController {
         return ApiResponse.ok(riskAnalysisService.listByReview(id));
     }
 
+    @GetMapping("/{id}/report")
+    public ApiResponse<ContractReviewService.ReviewReport> report(@PathVariable Long id) {
+        return ApiResponse.ok(reviewService.report(id));
+    }
+
+    @GetMapping("/{id}/trace")
+    public ApiResponse<ContractReviewService.ReviewTrace> trace(@PathVariable Long id) {
+        return ApiResponse.ok(reviewService.trace(id));
+    }
+
     @PostMapping("/{id}/cancel")
     public ApiResponse<ContractReview> cancel(@PathVariable Long id, @AuthenticationPrincipal CurrentUser user) {
         return ApiResponse.ok(reviewService.cancel(id, user));

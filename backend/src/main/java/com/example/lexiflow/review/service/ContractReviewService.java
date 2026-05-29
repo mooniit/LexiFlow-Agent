@@ -1,6 +1,7 @@
 package com.example.lexiflow.review.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.example.lexiflow.approval.service.ApprovalService;
 import com.example.lexiflow.agent.model.AgentStepType;
 import com.example.lexiflow.agent.model.AgentTaskStatus;
 import com.example.lexiflow.agent.service.AgentStateMachine;
@@ -16,6 +17,7 @@ import com.example.lexiflow.review.mapper.AgentStepMapper;
 import com.example.lexiflow.review.mapper.ContractReviewMapper;
 import com.example.lexiflow.review.model.AgentStateTransitionLog;
 import com.example.lexiflow.review.model.AgentStep;
+import com.example.lexiflow.review.model.ClauseRisk;
 import com.example.lexiflow.review.model.ContractReview;
 import com.example.lexiflow.security.CurrentUser;
 import com.example.lexiflow.user.mapper.AppUserMapper;
@@ -43,13 +45,15 @@ public class ContractReviewService {
     private final ReviewJobPublisher reviewJobPublisher;
     private final AppUserMapper userMapper;
     private final UserPermissionMapper userPermissionMapper;
+    private final ApprovalService approvalService;
 
     public ContractReviewService(ContractReviewMapper reviewMapper, AgentStepMapper stepMapper,
                                  AgentStateTransitionLogMapper transitionLogMapper, ContractService contractService,
                                  ClauseExtractionService clauseExtractionService, RagRetrievalService retrievalService,
                                  RiskAnalysisService riskAnalysisService, AgentStateMachine stateMachine,
                                  ReviewEventBus eventBus, ReviewJobPublisher reviewJobPublisher,
-                                 AppUserMapper userMapper, UserPermissionMapper userPermissionMapper) {
+                                 AppUserMapper userMapper, UserPermissionMapper userPermissionMapper,
+                                 ApprovalService approvalService) {
         this.reviewMapper = reviewMapper;
         this.stepMapper = stepMapper;
         this.transitionLogMapper = transitionLogMapper;
@@ -62,6 +66,7 @@ public class ContractReviewService {
         this.reviewJobPublisher = reviewJobPublisher;
         this.userMapper = userMapper;
         this.userPermissionMapper = userPermissionMapper;
+        this.approvalService = approvalService;
     }
 
     @Transactional
@@ -201,18 +206,88 @@ public class ContractReviewService {
             addStep(review.getId(), AgentStepType.RISK_ANALYSIS, "COMPLETED", "{}", "{\"riskCount\":" + risks.size() + "}", null);
             eventBus.publish(review.getId(), "RISK_ANALYSIS", "Risk analysis completed.");
 
-            transition(review, AgentTaskStatus.GENERATING_REPORT, "Generate review report.", user.id(), 90);
-            String overallRisk = risks.stream().anyMatch(risk -> "HIGH".equals(risk.getRiskLevel()))
-                    ? "HIGH"
-                    : risks.stream().anyMatch(risk -> "MEDIUM".equals(risk.getRiskLevel())) ? "MEDIUM" : "LOW";
-            addStep(review.getId(), AgentStepType.REPORT_GENERATION, "COMPLETED", "{}", "{\"summary\":\"Automated review completed.\"}", null);
-            review.setOverallRiskLevel(overallRisk);
-            review.setResultSummary("{\"summary\":\"Contract parsed and automated review completed.\",\"clauseCount\":"
-                    + clauses.size() + ",\"riskCount\":" + risks.size() + ",\"overallRiskLevel\":\"" + overallRisk + "\"}");
-            transition(review, AgentTaskStatus.COMPLETED, "Review completed.", user.id(), 100);
+            if (requiresApproval(risks)) {
+                approvalService.ensurePendingReviewApproval(review.getId(), risks, user);
+                review.setOverallRiskLevel(overallRisk(risks));
+                review.setResultSummary("{\"summary\":\"High-risk review is waiting for manual approval.\",\"clauseCount\":"
+                        + clauses.size() + ",\"riskCount\":" + risks.size() + ",\"overallRiskLevel\":\"" + overallRisk(risks)
+                        + "\",\"approvalRequired\":true}");
+                reviewMapper.updateById(review);
+                transition(review, AgentTaskStatus.WAITING_APPROVAL, "High-risk review requires manual approval.", user.id(), 80);
+                return;
+            }
+            generateReport(review, clauses.size(), risks, user, "Automated review completed.", false);
         } catch (RuntimeException ex) {
             fail(review, ex.getMessage(), user.id());
         }
+    }
+
+    @Transactional
+    public ContractReview resumeAfterApproval(Long reviewId, CurrentUser user) {
+        ContractReview review = requireById(reviewId);
+        if (!AgentTaskStatus.WAITING_APPROVAL.name().equals(review.getStatus())) {
+            throw new IllegalArgumentException("Only waiting approval review tasks can be resumed.");
+        }
+        List<ClauseRisk> risks = riskAnalysisService.listByReview(reviewId);
+        int clauseCount = clauseExtractionService.listByContract(review.getContractId()).size();
+        generateReport(review, clauseCount, risks, user, "Manual approval passed and report generated.", true);
+        return requireById(reviewId);
+    }
+
+    @Transactional
+    public ContractReview rejectAfterApproval(Long reviewId, CurrentUser user, String reason) {
+        ContractReview review = requireById(reviewId);
+        if (!AgentTaskStatus.WAITING_APPROVAL.name().equals(review.getStatus())) {
+            throw new IllegalArgumentException("Only waiting approval review tasks can be rejected.");
+        }
+        fail(review, reason, user.id());
+        return requireById(reviewId);
+    }
+
+    public ReviewReport report(Long reviewId) {
+        ContractReview review = requireById(reviewId);
+        List<ClauseRisk> risks = riskAnalysisService.listByReview(reviewId);
+        return new ReviewReport(review, risks, review.getResultSummary());
+    }
+
+    public ReviewTrace trace(Long reviewId) {
+        ContractReview review = requireById(reviewId);
+        List<AgentStep> steps = steps(reviewId);
+        List<AgentStateTransitionLog> transitions = transitionLogMapper.selectList(
+                new LambdaQueryWrapper<AgentStateTransitionLog>()
+                        .eq(AgentStateTransitionLog::getReviewId, reviewId)
+                        .orderByAsc(AgentStateTransitionLog::getCreatedAt));
+        return new ReviewTrace(review, steps, transitions);
+    }
+
+    private void generateReport(ContractReview review, int clauseCount, List<ClauseRisk> risks, CurrentUser user,
+                                String summary, boolean approvalPassed) {
+        transition(review, AgentTaskStatus.GENERATING_REPORT, "Generate review report.", user.id(), 90);
+        String overallRisk = overallRisk(risks);
+        addStep(review.getId(), AgentStepType.REPORT_GENERATION, "COMPLETED", "{}",
+                "{\"summary\":\"" + summary + "\"}", null);
+        review.setOverallRiskLevel(overallRisk);
+        review.setResultSummary("{\"summary\":\"" + summary + "\",\"clauseCount\":"
+                + clauseCount + ",\"riskCount\":" + risks.size() + ",\"overallRiskLevel\":\"" + overallRisk
+                + "\",\"approvalRequired\":" + requiresApproval(risks) + ",\"approvalPassed\":" + approvalPassed + "}");
+        transition(review, AgentTaskStatus.COMPLETED, "Review completed.", user.id(), 100);
+    }
+
+    private boolean requiresApproval(List<ClauseRisk> risks) {
+        return risks.stream().anyMatch(risk -> "HIGH".equals(risk.getRiskLevel())
+                || Boolean.TRUE.equals(risk.getRequiresApproval()));
+    }
+
+    private String overallRisk(List<ClauseRisk> risks) {
+        return risks.stream().anyMatch(risk -> "HIGH".equals(risk.getRiskLevel()))
+                ? "HIGH"
+                : risks.stream().anyMatch(risk -> "MEDIUM".equals(risk.getRiskLevel())) ? "MEDIUM" : "LOW";
+    }
+
+    public record ReviewReport(ContractReview review, List<ClauseRisk> risks, String summary) {
+    }
+
+    public record ReviewTrace(ContractReview review, List<AgentStep> steps, List<AgentStateTransitionLog> transitions) {
     }
 
     private void fail(ContractReview review, String reason, Long userId) {

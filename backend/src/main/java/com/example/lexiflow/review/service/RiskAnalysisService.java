@@ -38,6 +38,7 @@ public class RiskAnalysisService {
         riskMapper.delete(new LambdaQueryWrapper<ClauseRisk>().eq(ClauseRisk::getReviewId, reviewId));
         List<ClauseRisk> risks = new ArrayList<>();
         paymentRisk(reviewId, contractId, clauses, references, userId).ifPresent(risks::add);
+        highAmountRisk(reviewId, contractId, clauses, references, userId).ifPresent(risks::add);
         unlimitedLiabilityRisk(reviewId, contractId, clauses, references, userId).ifPresent(risks::add);
         dataProtectionRisk(reviewId, contractId, clauses, references, userId).ifPresent(risks::add);
         autoRenewalRisk(reviewId, contractId, clauses, references, userId).ifPresent(risks::add);
@@ -66,6 +67,28 @@ public class RiskAnalysisService {
                     "付款周期超过 60 天，可能影响现金流并偏离常见合同审查要求。",
                     "建议将付款周期调整为 30-60 天，或补充逾期付款违约责任。",
                     references, false, userId));
+        }
+        return Optional.empty();
+    }
+
+    private Optional<ClauseRisk> highAmountRisk(Long reviewId, Long contractId, List<ContractClause> clauses,
+                                                List<RetrievedChunk> references, Long userId) {
+        Optional<ContractClause> amount = find(clauses, "AMOUNT");
+        if (amount.isEmpty()) {
+            return Optional.empty();
+        }
+        Matcher matcher = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)").matcher(amount.get().getClauseText());
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        double value = Double.parseDouble(matcher.group(1));
+        String content = amount.get().getClauseText().toLowerCase(Locale.ROOT);
+        double normalizedAmount = (content.contains("万") || content.contains("涓囧厓")) ? value * 10000 : value;
+        if (normalizedAmount >= 1_000_000) {
+            return Optional.of(build(reviewId, contractId, amount.get(), "HIGH_CONTRACT_AMOUNT", "HIGH",
+                    "合同金额达到高额阈值，超出自动审查直接放行范围。",
+                    "建议由法务负责人或业务负责人确认付款、责任、验收和终止条款是否匹配该金额级别。",
+                    references, true, userId));
         }
         return Optional.empty();
     }

@@ -13,7 +13,8 @@ import org.springframework.context.annotation.Configuration;
         "com.example.lexiflow.contract.mapper",
         "com.example.lexiflow.review.mapper",
         "com.example.lexiflow.rag.mapper",
-        "com.example.lexiflow.tool.mapper"
+        "com.example.lexiflow.tool.mapper",
+        "com.example.lexiflow.approval.mapper"
 })
 public class MyBatisPlusConfig {
 

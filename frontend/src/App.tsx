@@ -5,6 +5,8 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import ContractListPage from './pages/contracts/ContractListPage';
 import ContractUploadPage from './pages/contracts/ContractUploadPage';
 import ContractReviewPage from './pages/contracts/ContractReviewPage';
+import ApprovalCenterPage from './pages/approvals/ApprovalCenterPage';
+import ReviewReportPage from './pages/contracts/ReviewReportPage';
 
 export default function App() {
   return (
@@ -16,6 +18,8 @@ export default function App() {
           <Route path="/contracts" element={<ContractListPage />} />
           <Route path="/contracts/upload" element={<ContractUploadPage />} />
           <Route path="/contracts/:id" element={<ContractReviewPage />} />
+          <Route path="/contracts/:id/report" element={<ReviewReportPage />} />
+          <Route path="/approvals" element={<ApprovalCenterPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

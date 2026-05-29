@@ -35,6 +35,7 @@ public class JwtService {
                 .expiration(Date.from(expiresAt))
                 .claim("uid", user.id())
                 .claim("displayName", user.displayName())
+                .claim("departmentId", user.departmentId())
                 .claim("roles", user.roles())
                 .claim("permissions", user.permissions())
                 .signWith(secretKey)
@@ -50,14 +51,15 @@ public class JwtService {
                 .parseSignedClaims(token)
                 .getPayload();
 
+        Number departmentId = claims.get("departmentId", Number.class);
         return new CurrentUser(
                 ((Number) claims.get("uid")).longValue(),
                 claims.getSubject(),
                 claims.get("displayName", String.class),
+                departmentId == null ? null : departmentId.longValue(),
                 (List<String>) claims.get("roles", List.class),
                 (List<String>) claims.get("permissions", List.class),
                 true
         );
     }
 }
-

@@ -7,6 +7,7 @@ import com.example.lexiflow.contract.model.Contract;
 import com.example.lexiflow.contract.model.ContractStatus;
 import com.example.lexiflow.common.util.JsonStrings;
 import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.tool.service.ToolPermissionGuard;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -27,11 +28,14 @@ public class ContractService {
     private final ContractMapper contractMapper;
     private final StorageProperties storageProperties;
     private final ContractTextParser textParser;
+    private final ToolPermissionGuard toolPermissionGuard;
 
-    public ContractService(ContractMapper contractMapper, StorageProperties storageProperties, ContractTextParser textParser) {
+    public ContractService(ContractMapper contractMapper, StorageProperties storageProperties, ContractTextParser textParser,
+                           ToolPermissionGuard toolPermissionGuard) {
         this.contractMapper = contractMapper;
         this.storageProperties = storageProperties;
         this.textParser = textParser;
+        this.toolPermissionGuard = toolPermissionGuard;
     }
 
     @Transactional
@@ -89,6 +93,7 @@ public class ContractService {
 
     @Transactional
     public Contract parse(Long id, CurrentUser user) {
+        toolPermissionGuard.requireAllowed("contract_parse", user);
         Contract contract = requireById(id);
         ContractTextParser.ParseResult result = textParser.parse(contract);
         if (result.success()) {

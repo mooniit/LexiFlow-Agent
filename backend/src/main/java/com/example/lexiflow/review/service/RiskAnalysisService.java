@@ -6,6 +6,8 @@ import com.example.lexiflow.contract.model.ContractClause;
 import com.example.lexiflow.rag.service.RagRetrievalService.RetrievedChunk;
 import com.example.lexiflow.review.mapper.ClauseRiskMapper;
 import com.example.lexiflow.review.model.ClauseRisk;
+import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.tool.service.ToolPermissionGuard;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -21,14 +23,18 @@ public class RiskAnalysisService {
     private static final Pattern DAYS_PATTERN = Pattern.compile("(?i)([0-9]{2,3})\\s*(?:日|天|days?)");
 
     private final ClauseRiskMapper riskMapper;
+    private final ToolPermissionGuard toolPermissionGuard;
 
-    public RiskAnalysisService(ClauseRiskMapper riskMapper) {
+    public RiskAnalysisService(ClauseRiskMapper riskMapper, ToolPermissionGuard toolPermissionGuard) {
         this.riskMapper = riskMapper;
+        this.toolPermissionGuard = toolPermissionGuard;
     }
 
     @Transactional
     public List<ClauseRisk> analyze(Long reviewId, Long contractId, List<ContractClause> clauses,
-                                    List<RetrievedChunk> references, Long userId) {
+                                    List<RetrievedChunk> references, CurrentUser user) {
+        toolPermissionGuard.requireAllowed("risk_analysis", user);
+        Long userId = user.id();
         riskMapper.delete(new LambdaQueryWrapper<ClauseRisk>().eq(ClauseRisk::getReviewId, reviewId));
         List<ClauseRisk> risks = new ArrayList<>();
         paymentRisk(reviewId, contractId, clauses, references, userId).ifPresent(risks::add);

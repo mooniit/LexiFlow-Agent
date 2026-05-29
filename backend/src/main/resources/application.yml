@@ -44,3 +44,4 @@ lexiflow:
       - tool.retry.queue
       - approval.event.queue
       - notification.queue
+    exchange: lexiflow.agent.exchange

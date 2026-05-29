@@ -31,13 +31,16 @@ public class KnowledgeBaseService {
     private final KnowledgeDocumentMapper documentMapper;
     private final DocumentChunkMapper chunkMapper;
     private final StorageProperties storageProperties;
+    private final KnowledgeAccessGuard knowledgeAccessGuard;
 
     public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper, KnowledgeDocumentMapper documentMapper,
-                                DocumentChunkMapper chunkMapper, StorageProperties storageProperties) {
+                                DocumentChunkMapper chunkMapper, StorageProperties storageProperties,
+                                KnowledgeAccessGuard knowledgeAccessGuard) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
         this.storageProperties = storageProperties;
+        this.knowledgeAccessGuard = knowledgeAccessGuard;
     }
 
     @Transactional
@@ -53,16 +56,20 @@ public class KnowledgeBaseService {
         return base;
     }
 
-    public List<KnowledgeBase> listBases() {
+    public List<KnowledgeBase> listBases(CurrentUser user) {
         return knowledgeBaseMapper.selectList(new LambdaQueryWrapper<KnowledgeBase>()
                 .eq(KnowledgeBase::getDeleted, false)
-                .orderByDesc(KnowledgeBase::getCreatedAt));
+                .orderByDesc(KnowledgeBase::getCreatedAt))
+                .stream()
+                .filter(base -> knowledgeAccessGuard.canRead(base, user))
+                .toList();
     }
 
     @Transactional
     public KnowledgeDocument uploadDocument(Long knowledgeBaseId, MultipartFile file, String title, String documentType,
                                             CurrentUser user) {
         KnowledgeBase base = requireBase(knowledgeBaseId);
+        knowledgeAccessGuard.requireRead(base, user);
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename() == null ? "rule.txt" : file.getOriginalFilename());
         String fileType = resolveFileType(originalFilename);
         if (!List.of("txt", "docx").contains(fileType)) {
@@ -94,14 +101,19 @@ public class KnowledgeBaseService {
         }
     }
 
-    public List<KnowledgeDocument> listDocuments(Long knowledgeBaseId) {
+    public List<KnowledgeDocument> listDocuments(Long knowledgeBaseId, CurrentUser user) {
         LambdaQueryWrapper<KnowledgeDocument> query = new LambdaQueryWrapper<KnowledgeDocument>()
                 .eq(KnowledgeDocument::getDeleted, false)
+                .eq(KnowledgeDocument::getDocumentStatus, "ACTIVE")
                 .orderByDesc(KnowledgeDocument::getCreatedAt);
         if (knowledgeBaseId != null) {
+            KnowledgeBase base = requireBase(knowledgeBaseId);
+            knowledgeAccessGuard.requireRead(base, user);
             query.eq(KnowledgeDocument::getKnowledgeBaseId, knowledgeBaseId);
         }
-        return documentMapper.selectList(query);
+        return documentMapper.selectList(query).stream()
+                .filter(document -> knowledgeAccessGuard.canRead(requireBase(document.getKnowledgeBaseId()), user))
+                .toList();
     }
 
     public List<DocumentChunk> listChunks(Long documentId) {

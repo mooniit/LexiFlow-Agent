@@ -34,7 +34,14 @@ public class UserAuthService {
 
         List<String> roles = permissionMapper.findRoleCodes(user.getId());
         List<String> permissions = permissionMapper.findPermissionCodes(user.getId());
-        return new CurrentUser(user.getId(), user.getUsername(), user.getDisplayName(), roles, permissions, user.getEnabled());
+        return new CurrentUser(
+                user.getId(),
+                user.getUsername(),
+                user.getDisplayName(),
+                user.getDepartmentId(),
+                roles,
+                permissions,
+                user.getEnabled()
+        );
     }
 }
-

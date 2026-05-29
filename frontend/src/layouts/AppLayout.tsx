@@ -4,7 +4,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clearToken } from '../api/client';
 import { fetchMe, type UserProfile } from '../api/auth';
 import { useEffect, useState } from 'react';
-import { Activity, FileText, FileUp, Search } from 'lucide-react';
+import { Activity, FileText, FileUp, Search, CheckCircle } from 'lucide-react';
 
 const { Header, Sider, Content } = Layout;
 
@@ -31,6 +31,7 @@ export default function AppLayout() {
     { to: '/dashboard', icon: <Activity size={17} />, label: '工作台' },
     { to: '/contracts', icon: <FileText size={17} />, label: '合同管理' },
     { to: '/contracts/upload', icon: <FileUp size={17} />, label: '上传合同' },
+    { to: '/approvals', icon: <CheckCircle size={17} />, label: '审批中心' },
     { to: '/knowledge', icon: <Search size={17} />, label: '知识库问答' },
   ];
 

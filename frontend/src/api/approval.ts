@@ -1,12 +1,12 @@
 import { api } from './client';
 
 export type ApprovalRequest = {
-  id: number;
-  reviewId: number;
+  id: string;
+  reviewId: string;
   approvalType: string;
   status: string;
-  approverId: number;
-  requestedBy: number;
+  approverId: string;
+  requestedBy: string;
   comment: string;
   riskSummary: string;
   resolvedAt: string;
@@ -15,15 +15,15 @@ export type ApprovalRequest = {
 };
 
 export type ApprovalHistory = {
-  id: number;
-  approvalId: number;
+  id: string;
+  approvalId: string;
   action: string;
   comment: string;
-  actorId: number;
+  actorId: string;
   createdAt: string;
 };
 
-export function listApprovals(status?: string, reviewId?: number) {
+export function listApprovals(status?: string, reviewId?: string) {
   const params = new URLSearchParams();
   if (status) params.set('status', status);
   if (reviewId) params.set('reviewId', String(reviewId));
@@ -31,15 +31,15 @@ export function listApprovals(status?: string, reviewId?: number) {
   return api<ApprovalRequest[]>(`/api/approvals${qs ? `?${qs}` : ''}`);
 }
 
-export function getApproval(id: number) {
+export function getApproval(id: string) {
   return api<ApprovalRequest>(`/api/approvals/${id}`);
 }
 
-export function getApprovalHistory(id: number) {
+export function getApprovalHistory(id: string) {
   return api<ApprovalHistory[]>(`/api/approvals/${id}/history`);
 }
 
-export function approveRequest(id: number, comment?: string) {
+export function approveRequest(id: string, comment?: string) {
   return api<ApprovalRequest>(`/api/approvals/${id}/approve`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -47,7 +47,7 @@ export function approveRequest(id: number, comment?: string) {
   });
 }
 
-export function rejectRequest(id: number, comment?: string) {
+export function rejectRequest(id: string, comment?: string) {
   return api<ApprovalRequest>(`/api/approvals/${id}/reject`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -55,7 +55,7 @@ export function rejectRequest(id: number, comment?: string) {
   });
 }
 
-export function requestRevision(id: number, comment?: string) {
+export function requestRevision(id: string, comment?: string) {
   return api<ApprovalRequest>(`/api/approvals/${id}/request-revision`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

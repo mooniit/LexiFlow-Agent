@@ -1,7 +1,7 @@
 import { api, setToken } from './client';
 
 export type UserProfile = {
-  id: number;
+  id: string;
   username: string;
   displayName: string;
   roles: string[];

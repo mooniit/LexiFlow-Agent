@@ -31,7 +31,7 @@ export default function ContractListPage() {
       .finally(() => setLoading(false));
   }, [statusFilter]);
 
-  async function handleCreateReview(contractId: number) {
+  async function handleCreateReview(contractId: string) {
     try {
       const review = await createReview(contractId);
       message.success(`审查任务已创建 #${review.id}`);
@@ -41,7 +41,7 @@ export default function ContractListPage() {
     }
   }
 
-  async function handleDelete(id: number) {
+  async function handleDelete(id: string) {
     try {
       await deleteContract(id);
       message.success('合同已删除');

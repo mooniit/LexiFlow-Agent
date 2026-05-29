@@ -98,7 +98,7 @@ export default function ApprovalCenterPage() {
     }
   }
 
-  async function doAction(id: number, action: 'approve' | 'reject' | 'revision') {
+  async function doAction(id: string, action: 'approve' | 'reject' | 'revision') {
     setActing(true);
     try {
       const updated = await (action === 'approve'

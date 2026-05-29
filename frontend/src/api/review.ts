@@ -1,8 +1,8 @@
 import { api, createSSE } from './client';
 
 export type ContractReview = {
-  id: number;
-  contractId: number;
+  id: string;
+  contractId: string;
   status: string;
   overallRisk: string;
   reportJson: string;
@@ -12,8 +12,8 @@ export type ContractReview = {
 };
 
 export type AgentStep = {
-  id: number;
-  reviewId: number;
+  id: string;
+  reviewId: string;
   stepType: string;
   status: string;
   inputSummary: string;
@@ -23,9 +23,9 @@ export type AgentStep = {
 };
 
 export type ClauseRisk = {
-  id: number;
-  reviewId: number;
-  contractId: number;
+  id: string;
+  reviewId: string;
+  contractId: string;
   riskLevel: string;
   riskType: string;
   clauseName: string;
@@ -37,7 +37,7 @@ export type ClauseRisk = {
   createdAt: string;
 };
 
-export function createReview(contractId: number) {
+export function createReview(contractId: string) {
   return api<ContractReview>('/api/reviews', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -45,31 +45,31 @@ export function createReview(contractId: number) {
   });
 }
 
-export function listReviews(contractId?: number) {
+export function listReviews(contractId?: string) {
   const qs = contractId ? `?contractId=${contractId}` : '';
   return api<ContractReview[]>(`/api/reviews${qs}`);
 }
 
-export function getReview(id: number) {
+export function getReview(id: string) {
   return api<ContractReview>(`/api/reviews/${id}`);
 }
 
-export function getReviewSteps(id: number) {
+export function getReviewSteps(id: string) {
   return api<AgentStep[]>(`/api/reviews/${id}/steps`);
 }
 
-export function getReviewRisks(id: number) {
+export function getReviewRisks(id: string) {
   return api<ClauseRisk[]>(`/api/reviews/${id}/risks`);
 }
 
-export function cancelReview(id: number) {
+export function cancelReview(id: string) {
   return api<ContractReview>(`/api/reviews/${id}/cancel`, { method: 'POST' });
 }
 
-export function rerunReview(id: number) {
+export function rerunReview(id: string) {
   return api<ContractReview>(`/api/reviews/${id}/rerun`, { method: 'POST' });
 }
 
-export function subscribeReviewEvents(reviewId: number) {
+export function subscribeReviewEvents(reviewId: string) {
   return createSSE(`/api/reviews/${reviewId}/events`);
 }

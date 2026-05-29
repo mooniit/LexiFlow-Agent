@@ -18,7 +18,7 @@ import ReviewTimeline from '../../components/ReviewTimeline';
 export default function ContractReviewPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const contractId = Number(id);
+  const contractId = id || '';
   const initialReviewId = searchParams.get('reviewId');
   const navigate = useNavigate();
 
@@ -38,7 +38,7 @@ export default function ContractReviewPage() {
         getOriginalText(contractId).then((r) => setOriginalText(r.text)).catch(() => setOriginalText('（无法加载原文）'));
 
         if (initialReviewId) {
-          const r = await getReview(Number(initialReviewId));
+          const r = await getReview(initialReviewId);
           setReview(r);
           const [stepList, riskList] = await Promise.all([
             getReviewSteps(r.id),

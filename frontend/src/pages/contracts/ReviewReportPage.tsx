@@ -16,7 +16,7 @@ const statusLabels: Record<string, string> = {
 export default function ReviewReportPage() {
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
-  const contractId = Number(id);
+  const contractId = id || '';
   const reviewId = searchParams.get('reviewId');
 
   const [contract, setContract] = useState<Contract | null>(null);
@@ -32,7 +32,7 @@ export default function ReviewReportPage() {
         const c = await getContract(contractId);
         setContract(c);
         if (reviewId) {
-          const r = await getReview(Number(reviewId));
+          const r = await getReview(reviewId);
           setReview(r);
           const [riskList, stepList, approvalList] = await Promise.all([
             getReviewRisks(r.id),

@@ -66,6 +66,7 @@ public class ContractService {
             contract.setMetadata("{}");
             contract.setCreatedBy(user.id());
             contract.setUpdatedBy(user.id());
+            applyParseResult(contract, textParser.parse(contract));
             contractMapper.insert(contract);
             return contract;
         } catch (IOException ex) {
@@ -95,14 +96,7 @@ public class ContractService {
     public Contract parse(Long id, CurrentUser user) {
         toolPermissionGuard.requireAllowed("contract_parse", user);
         Contract contract = requireById(id);
-        ContractTextParser.ParseResult result = textParser.parse(contract);
-        if (result.success()) {
-            contract.setParsedText(result.text());
-            contract.setStatus(ContractStatus.PARSED.name());
-        } else {
-            contract.setStatus(ContractStatus.PARSE_FAILED.name());
-            contract.setMetadata("{\"parse_failure\":" + JsonStrings.quote(result.message()) + "}");
-        }
+        applyParseResult(contract, textParser.parse(contract));
         contract.setUpdatedBy(user.id());
         contractMapper.updateById(contract);
         return contract;
@@ -128,7 +122,26 @@ public class ContractService {
 
     public String originalText(Long id) {
         Contract contract = requireById(id);
-        return textParser.parse(contract).text();
+        if (StringUtils.hasText(contract.getParsedText())) {
+            return contract.getParsedText();
+        }
+        ContractTextParser.ParseResult result = textParser.parse(contract);
+        if (!result.success()) {
+            throw new IllegalStateException(result.message());
+        }
+        return result.text();
+    }
+
+    private void applyParseResult(Contract contract, ContractTextParser.ParseResult result) {
+        if (result.success()) {
+            contract.setParsedText(result.text());
+            contract.setStatus(ContractStatus.PARSED.name());
+            contract.setMetadata("{\"parse_message\":" + JsonStrings.quote(result.message()) + "}");
+        } else {
+            contract.setParsedText(null);
+            contract.setStatus(ContractStatus.PARSE_FAILED.name());
+            contract.setMetadata("{\"parse_failure\":" + JsonStrings.quote(result.message()) + "}");
+        }
     }
 
     private String resolveFileType(String filename) {

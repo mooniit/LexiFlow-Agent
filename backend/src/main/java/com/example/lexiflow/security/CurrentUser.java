@@ -9,6 +9,7 @@ public record CurrentUser(
         Long id,
         String username,
         String displayName,
+        Long departmentId,
         List<String> roles,
         List<String> permissions,
         boolean enabled

@@ -5,6 +5,8 @@ import com.example.lexiflow.common.util.JsonStrings;
 import com.example.lexiflow.contract.mapper.ContractClauseMapper;
 import com.example.lexiflow.contract.model.Contract;
 import com.example.lexiflow.contract.model.ContractClause;
+import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.tool.service.ToolPermissionGuard;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,13 +25,17 @@ public class ClauseExtractionService {
     private static final Pattern MONTHS_PATTERN = Pattern.compile("(?i)([0-9]{1,3})\\s*(?:个月|月|months?)");
 
     private final ContractClauseMapper clauseMapper;
+    private final ToolPermissionGuard toolPermissionGuard;
 
-    public ClauseExtractionService(ContractClauseMapper clauseMapper) {
+    public ClauseExtractionService(ContractClauseMapper clauseMapper, ToolPermissionGuard toolPermissionGuard) {
         this.clauseMapper = clauseMapper;
+        this.toolPermissionGuard = toolPermissionGuard;
     }
 
     @Transactional
-    public List<ContractClause> extract(Contract contract, Long userId) {
+    public List<ContractClause> extract(Contract contract, CurrentUser user) {
+        toolPermissionGuard.requireAllowed("clause_extraction", user);
+        Long userId = user.id();
         clauseMapper.delete(new LambdaQueryWrapper<ContractClause>().eq(ContractClause::getContractId, contract.getId()));
         String text = contract.getParsedText() == null ? "" : contract.getParsedText();
         List<ContractClause> clauses = new ArrayList<>();

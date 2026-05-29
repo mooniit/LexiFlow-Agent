@@ -40,8 +40,8 @@ public class KnowledgeBaseController {
     }
 
     @GetMapping
-    public ApiResponse<List<KnowledgeBase>> list() {
-        return ApiResponse.ok(knowledgeBaseService.listBases());
+    public ApiResponse<List<KnowledgeBase>> list(@AuthenticationPrincipal CurrentUser user) {
+        return ApiResponse.ok(knowledgeBaseService.listBases(user));
     }
 
     @PostMapping("/{id}/documents")
@@ -54,8 +54,9 @@ public class KnowledgeBaseController {
     }
 
     @GetMapping("/documents")
-    public ApiResponse<List<KnowledgeDocument>> documents(@RequestParam(required = false) Long knowledgeBaseId) {
-        return ApiResponse.ok(knowledgeBaseService.listDocuments(knowledgeBaseId));
+    public ApiResponse<List<KnowledgeDocument>> documents(@RequestParam(required = false) Long knowledgeBaseId,
+                                                          @AuthenticationPrincipal CurrentUser user) {
+        return ApiResponse.ok(knowledgeBaseService.listDocuments(knowledgeBaseId, user));
     }
 
     @GetMapping("/documents/{id}/chunks")
@@ -66,7 +67,7 @@ public class KnowledgeBaseController {
     @PostMapping("/search")
     public ApiResponse<List<RetrievedChunk>> search(@Valid @RequestBody SearchRequest request,
                                                     @AuthenticationPrincipal CurrentUser user) {
-        return ApiResponse.ok(retrievalService.retrieve(request.reviewId(), request.query(), request.limit() == null ? 5 : request.limit(), user.id()));
+        return ApiResponse.ok(retrievalService.retrieve(request.reviewId(), request.query(), request.limit() == null ? 5 : request.limit(), user));
     }
 
     public record CreateKnowledgeBaseRequest(@NotBlank String name, String visibility) {

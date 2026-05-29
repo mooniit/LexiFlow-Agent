@@ -18,10 +18,11 @@ import com.example.lexiflow.review.model.AgentStateTransitionLog;
 import com.example.lexiflow.review.model.AgentStep;
 import com.example.lexiflow.review.model.ContractReview;
 import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.user.mapper.AppUserMapper;
+import com.example.lexiflow.user.mapper.UserPermissionMapper;
+import com.example.lexiflow.user.model.AppUser;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -39,13 +40,16 @@ public class ContractReviewService {
     private final RiskAnalysisService riskAnalysisService;
     private final AgentStateMachine stateMachine;
     private final ReviewEventBus eventBus;
-    private final ExecutorService reviewExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final ReviewJobPublisher reviewJobPublisher;
+    private final AppUserMapper userMapper;
+    private final UserPermissionMapper userPermissionMapper;
 
     public ContractReviewService(ContractReviewMapper reviewMapper, AgentStepMapper stepMapper,
                                  AgentStateTransitionLogMapper transitionLogMapper, ContractService contractService,
                                  ClauseExtractionService clauseExtractionService, RagRetrievalService retrievalService,
                                  RiskAnalysisService riskAnalysisService, AgentStateMachine stateMachine,
-                                 ReviewEventBus eventBus) {
+                                 ReviewEventBus eventBus, ReviewJobPublisher reviewJobPublisher,
+                                 AppUserMapper userMapper, UserPermissionMapper userPermissionMapper) {
         this.reviewMapper = reviewMapper;
         this.stepMapper = stepMapper;
         this.transitionLogMapper = transitionLogMapper;
@@ -55,6 +59,9 @@ public class ContractReviewService {
         this.riskAnalysisService = riskAnalysisService;
         this.stateMachine = stateMachine;
         this.eventBus = eventBus;
+        this.reviewJobPublisher = reviewJobPublisher;
+        this.userMapper = userMapper;
+        this.userPermissionMapper = userPermissionMapper;
     }
 
     @Transactional
@@ -70,7 +77,7 @@ public class ContractReviewService {
         reviewMapper.insert(review);
         logTransition(review.getId(), null, AgentTaskStatus.CREATED.name(), "Review task created.", user.id());
         eventBus.publish(review.getId(), "CREATED", "Review task created.");
-        runAfterCommit(() -> runInline(review.getId(), user));
+        publishAfterCommit(review.getId(), user);
         return review;
     }
 
@@ -114,8 +121,19 @@ public class ContractReviewService {
             throw new IllegalArgumentException("Only failed review tasks can be rerun.");
         }
         transition(review, AgentTaskStatus.PARSING, "Review rerun requested.", user.id(), 10);
-        runAfterCommit(() -> runFromParsing(requireById(reviewId), user));
+        publishAfterCommit(reviewId, user);
         return requireById(reviewId);
+    }
+
+    @Transactional
+    public void runQueuedReview(Long reviewId, Long userId) {
+        CurrentUser user = loadCurrentUser(userId);
+        ContractReview review = requireById(reviewId);
+        if (AgentTaskStatus.CREATED.name().equals(review.getStatus())) {
+            runInline(reviewId, user);
+        } else if (AgentTaskStatus.PARSING.name().equals(review.getStatus())) {
+            runFromParsing(review, user);
+        }
     }
 
     private void runInline(Long reviewId, CurrentUser user) {
@@ -124,17 +142,33 @@ public class ContractReviewService {
         runFromParsing(review, user);
     }
 
-    private void runAfterCommit(Runnable task) {
+    private void publishAfterCommit(Long reviewId, CurrentUser user) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    reviewExecutor.execute(task);
+                    reviewJobPublisher.publishReviewJob(reviewId, user);
                 }
             });
         } else {
-            reviewExecutor.execute(task);
+            reviewJobPublisher.publishReviewJob(reviewId, user);
         }
+    }
+
+    private CurrentUser loadCurrentUser(Long userId) {
+        AppUser appUser = userMapper.selectById(userId);
+        if (appUser == null || Boolean.TRUE.equals(appUser.getDeleted()) || Boolean.FALSE.equals(appUser.getEnabled())) {
+            throw new IllegalArgumentException("Review user not available: " + userId);
+        }
+        return new CurrentUser(
+                appUser.getId(),
+                appUser.getUsername(),
+                appUser.getDisplayName(),
+                appUser.getDepartmentId(),
+                userPermissionMapper.findRoleCodes(appUser.getId()),
+                userPermissionMapper.findPermissionCodes(appUser.getId()),
+                appUser.getEnabled()
+        );
     }
 
     private void runFromParsing(ContractReview review, CurrentUser user) {
@@ -148,7 +182,7 @@ public class ContractReviewService {
             finishLastRunningStep(review.getId(), "{\"textLength\":" + contract.getParsedText().length() + "}");
 
             transition(review, AgentTaskStatus.EXTRACTING, "Extract contract clauses.", user.id(), 30);
-            List<ContractClause> clauses = clauseExtractionService.extract(contract, user.id());
+            List<ContractClause> clauses = clauseExtractionService.extract(contract, user);
             addStep(review.getId(), AgentStepType.CLAUSE_EXTRACTION, "COMPLETED", "{}", "{\"clauseCount\":" + clauses.size() + "}", null);
             eventBus.publish(review.getId(), "CLAUSE_EXTRACTION", "Clause extraction completed.");
 
@@ -158,12 +192,12 @@ public class ContractReviewService {
                     .limit(5)
                     .reduce((left, right) -> left + "\n" + right)
                     .orElse(contract.getParsedText());
-            List<RetrievedChunk> references = retrievalService.retrieve(review.getId(), retrievalQuery, 5, user.id());
+            List<RetrievedChunk> references = retrievalService.retrieve(review.getId(), retrievalQuery, 5, user);
             addStep(review.getId(), AgentStepType.RULE_RETRIEVAL, "COMPLETED", "{}", "{\"matchedRules\":" + references.size() + "}", null);
             eventBus.publish(review.getId(), "RULE_RETRIEVAL", "Rule retrieval completed.");
 
             transition(review, AgentTaskStatus.ANALYZING, "Analyze contract risks.", user.id(), 70);
-            var risks = riskAnalysisService.analyze(review.getId(), review.getContractId(), clauses, references, user.id());
+            var risks = riskAnalysisService.analyze(review.getId(), review.getContractId(), clauses, references, user);
             addStep(review.getId(), AgentStepType.RISK_ANALYSIS, "COMPLETED", "{}", "{\"riskCount\":" + risks.size() + "}", null);
             eventBus.publish(review.getId(), "RISK_ANALYSIS", "Risk analysis completed.");
 

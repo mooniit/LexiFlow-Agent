@@ -64,7 +64,7 @@ public class ContractController {
     @PostMapping("/{id}/clauses/extract")
     public ApiResponse<List<ContractClause>> extractClauses(@PathVariable Long id, @AuthenticationPrincipal CurrentUser user) {
         Contract contract = contractService.requireById(id);
-        return ApiResponse.ok(clauseExtractionService.extract(contract, user.id()));
+        return ApiResponse.ok(clauseExtractionService.extract(contract, user));
     }
 
     @GetMapping("/{id}/clauses")

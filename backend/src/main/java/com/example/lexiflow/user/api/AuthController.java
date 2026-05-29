@@ -46,10 +46,10 @@ public class AuthController {
         }
     }
 
-    public record UserProfile(Long id, String username, String displayName, List<String> roles, List<String> permissions) {
+    public record UserProfile(Long id, String username, String displayName, Long departmentId,
+                              List<String> roles, List<String> permissions) {
         static UserProfile from(CurrentUser user) {
-            return new UserProfile(user.id(), user.username(), user.displayName(), user.roles(), user.permissions());
+            return new UserProfile(user.id(), user.username(), user.displayName(), user.departmentId(), user.roles(), user.permissions());
         }
     }
 }
-

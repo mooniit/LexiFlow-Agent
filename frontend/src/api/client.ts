@@ -20,7 +20,8 @@ export async function api<T>(path: string, options?: RequestInit): Promise<T> {
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
   const res = await fetch(path, { ...options, headers });
-  const json = await res.json();
+  const text = await res.text();
+  const json = text ? JSON.parse(text) : { success: res.ok, data: null };
 
   if (!res.ok || !json.success) {
     throw new Error(json.message || `请求失败 (${res.status})`);

@@ -24,7 +24,7 @@ storage/knowledge/*
 .env
 .npm-cache/
 .claude/
-.superpower/
+.superpowers/
 
 # OS
 Thumbs.db

@@ -50,7 +50,15 @@ lexiflow:
       secret: "change-me-change-me-change-me-change-me-change-me"
       expires-minutes: 480
   llm:
-    provider: mock
+    provider: ${LEXIFLOW_LLM_PROVIDER:mock}
+    deepseek:
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      api-key: ${DEEPSEEK_API_KEY:}
+      chat-model: ${DEEPSEEK_CHAT_MODEL:deepseek-v4-flash}
+    dashscope:
+      base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+      api-key: ${DASHSCOPE_API_KEY:}
+      embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
   storage:
     contracts-dir: ../storage/contracts
     knowledge-dir: ../storage/knowledge

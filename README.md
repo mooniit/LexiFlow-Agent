@@ -37,14 +37,37 @@ Docker Desktop / Docker Compose
 docker compose up -d postgres redis rabbitmq
 ```
 
-### 2. 启动后端
+### 2. 配置 LLM Provider
+
+默认使用 `mock`，不需要外部密钥。若要启用真实模型，在当前终端设置环境变量：
+
+```powershell
+$env:LEXIFLOW_LLM_PROVIDER="deepseek"
+$env:DEEPSEEK_API_KEY="你的 DeepSeek API Key"
+$env:DASHSCOPE_API_KEY="你的 DashScope API Key"
+```
+
+文本模型能力 `chat`、`streamChat`、`structuredOutput`、`toolCalling` 默认使用 `deepseek-v4-flash`；Embedding 默认使用 `text-embedding-v4`。
+
+可选覆盖项：
+
+```powershell
+$env:DEEPSEEK_BASE_URL="https://api.deepseek.com"
+$env:DEEPSEEK_CHAT_MODEL="deepseek-v4-flash"
+$env:DASHSCOPE_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+$env:DASHSCOPE_EMBEDDING_MODEL="text-embedding-v4"
+```
+
+不要把真实密钥写入仓库。`.env` 已在 `.gitignore` 中忽略。
+
+### 3. 启动后端
 
 ```bash
 cd backend
 mvn spring-boot:run -Dspring-boot.run.profiles=dev
 ```
 
-### 3. 检查健康状态
+### 4. 检查健康状态
 
 ```text
 GET http://localhost:8080/api/actuator/health
@@ -63,7 +86,7 @@ diskSpace
 readiness/liveness probes
 ```
 
-### 4. 启动前端
+### 5. 启动前端
 
 ```bash
 cd frontend

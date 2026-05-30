@@ -40,11 +40,12 @@ public class KnowledgeBaseService {
     private final KnowledgeAccessGuard knowledgeAccessGuard;
     private final ContractTextParser contractTextParser;
     private final LlmGateway llmGateway;
+    private final KnowledgeDocumentNormalizer documentNormalizer;
 
     public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper, KnowledgeDocumentMapper documentMapper,
                                 DocumentChunkMapper chunkMapper, StorageProperties storageProperties,
                                 KnowledgeAccessGuard knowledgeAccessGuard, ContractTextParser contractTextParser,
-                                LlmGateway llmGateway) {
+                                LlmGateway llmGateway, KnowledgeDocumentNormalizer documentNormalizer) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
@@ -52,6 +53,7 @@ public class KnowledgeBaseService {
         this.knowledgeAccessGuard = knowledgeAccessGuard;
         this.contractTextParser = contractTextParser;
         this.llmGateway = llmGateway;
+        this.documentNormalizer = documentNormalizer;
     }
 
     @Transactional
@@ -102,11 +104,14 @@ public class KnowledgeBaseService {
             document.setDocumentType(StringUtils.hasText(documentType) ? documentType : "RULE");
             document.setDocumentStatus("ACTIVE");
             document.setFilePath(target.toString());
-            document.setMetadata("{\"originalFilename\":" + JsonStrings.quote(originalFilename) + ",\"fileType\":" + JsonStrings.quote(fileType) + "}");
+            String normalizedText = documentNormalizer.normalize(parseResult.text(), fileType);
+            document.setMetadata("{\"originalFilename\":" + JsonStrings.quote(originalFilename)
+                    + ",\"fileType\":" + JsonStrings.quote(fileType)
+                    + ",\"normalization\":\"legal-article-v1\"}");
             document.setCreatedBy(user.id());
             document.setUpdatedBy(user.id());
             documentMapper.insert(document);
-            ingestChunks(document, parseResult.text(), user.id());
+            ingestChunks(document, normalizedText, user.id());
             return document;
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to store knowledge document.", ex);
@@ -178,14 +183,21 @@ public class KnowledgeBaseService {
                     document.setDocumentType("RULE");
                     document.setDocumentStatus("ACTIVE");
                     document.setFilePath(filePath.toString());
-                    document.setMetadata("{\"originalFilename\":" + JsonStrings.quote(filename) + ",\"fileType\":" + JsonStrings.quote(fileType) + ",\"source\":\"batch-import\"}");
+                    String normalizedText = documentNormalizer.normalize(parseResult.text(), fileType);
+                    document.setMetadata("{\"originalFilename\":" + JsonStrings.quote(filename)
+                            + ",\"fileType\":" + JsonStrings.quote(fileType)
+                            + ",\"source\":\"batch-import\",\"normalization\":\"legal-article-v1\"}");
                     document.setCreatedBy(user.id());
                     document.setUpdatedBy(user.id());
                     documentMapper.insert(document);
-                    ingestChunks(document, parseResult.text(), user.id());
+                    ingestChunks(document, normalizedText, user.id());
                     imported++;
                 } catch (Exception ex) {
-                    errors.add(filename + ": " + ex.getMessage());
+                    String detail = ex.getMessage();
+                    if (ex.getCause() != null) {
+                        detail = detail + " | cause: " + ex.getCause().getMessage();
+                    }
+                    errors.add(filename + ": " + detail);
                 }
             }
         } catch (IOException ex) {
@@ -212,7 +224,7 @@ public class KnowledgeBaseService {
             chunkMapper.insert(chunk);
             return;
         }
-        List<ArticleChunk> articleChunks = splitByArticlesWithMeta(content, 800);
+        List<ArticleChunk> articleChunks = splitByArticlesWithMeta(content, MAX_CHUNK_CHARS);
         List<String> textsToEmbed = new ArrayList<>();
         List<DocumentChunk> chunkRecords = new ArrayList<>();
         for (int i = 0; i < articleChunks.size(); i++) {
@@ -229,13 +241,24 @@ public class KnowledgeBaseService {
         }
     }
 
+    private static final int EMBEDDING_BATCH_SIZE = 10;
+    private static final int MAX_CHUNK_CHARS = 450;
+    private static final int CHUNK_OVERLAP_CHARS = 60;
+
     private List<List<Double>> batchEmbed(List<String> texts, Long documentId) {
-        try {
-            EmbeddingResponse response = llmGateway.embed(new EmbeddingRequest(null, texts));
-            return response.embeddings();
-        } catch (Exception ex) {
-            throw new IllegalStateException("Embedding failed for document " + documentId + ": " + ex.getMessage(), ex);
+        List<List<Double>> allEmbeddings = new ArrayList<>();
+        for (int start = 0; start < texts.size(); start += EMBEDDING_BATCH_SIZE) {
+            int end = Math.min(start + EMBEDDING_BATCH_SIZE, texts.size());
+            List<String> batch = texts.subList(start, end);
+            try {
+                EmbeddingResponse response = llmGateway.embed(new EmbeddingRequest(null, batch));
+                allEmbeddings.addAll(response.embeddings());
+            } catch (Exception ex) {
+                throw new IllegalStateException(
+                        "Embedding failed for document " + documentId + " batch [" + start + "-" + end + "]: " + ex.getMessage(), ex);
+            }
         }
+        return allEmbeddings;
     }
 
     private DocumentChunk buildChunk(Long documentId, int index, String content, Long userId, String embedding, String metadata) {
@@ -271,7 +294,7 @@ public class KnowledgeBaseService {
             return "{}";
         }
         String joined = articleRefs.stream()
-                .map(ref -> "\"" + ref + "\"")
+                .map(JsonStrings::quote)
                 .reduce((a, b) -> a + "," + b)
                 .orElse("");
         return "{\"articles\":[" + joined + "]}";
@@ -281,37 +304,21 @@ public class KnowledgeBaseService {
         String normalized = content.replace("\r\n", "\n").trim();
         List<String> blocks = splitByArticleBoundary(normalized);
         List<ArticleChunk> chunks = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        List<String> currentArticles = new ArrayList<>();
         for (String block : blocks) {
             String articleRef = extractArticleRef(block);
-            if (current.length() + block.length() > maxLength && current.length() > 0) {
-                chunks.add(new ArticleChunk(current.toString().trim(), buildArticleMeta(currentArticles)));
-                current = new StringBuilder();
-                currentArticles = new ArrayList<>();
+            String metadata = buildArticleMeta(articleRef == null ? List.of() : List.of(articleRef));
+            if (block.length() <= maxLength) {
+                chunks.add(new ArticleChunk(block.trim(), metadata));
+            } else {
+                chunks.addAll(splitLongArticle(block, maxLength, metadata));
             }
-            if (current.length() > 0) {
-                current.append("\n");
-            }
-            current.append(block);
-            if (articleRef != null) {
-                currentArticles.add(articleRef);
-            }
-            while (current.length() > maxLength * 2) {
-                int splitPoint = findSafeSplit(current.toString(), maxLength);
-                chunks.add(new ArticleChunk(current.substring(0, splitPoint).trim(), buildArticleMeta(currentArticles)));
-                current = new StringBuilder(current.substring(splitPoint).trim());
-            }
-        }
-        if (current.length() > 0) {
-            chunks.add(new ArticleChunk(current.toString().trim(), buildArticleMeta(currentArticles)));
         }
         return chunks.isEmpty() ? List.of(new ArticleChunk(normalized, "{}")) : chunks;
     }
 
     private List<String> splitByArticleBoundary(String text) {
         List<String> blocks = new ArrayList<>();
-        String[] parts = text.split("(?=第[一二三四五六七八九十百千0-9]+条)");
+        String[] parts = text.split("(?m)(?=^\\s*(?:第\\s*[一二三四五六七八九十百千万零〇两0-9]+\\s*条|Article\\s+\\d+)(?:\\s|$|[：:、.．]))");
         for (String part : parts) {
             String trimmed = part.trim();
             if (!trimmed.isEmpty()) {
@@ -319,6 +326,27 @@ public class KnowledgeBaseService {
             }
         }
         return blocks.isEmpty() ? List.of(text) : blocks;
+    }
+
+    private List<ArticleChunk> splitLongArticle(String block, int maxLength, String metadata) {
+        List<ArticleChunk> chunks = new ArrayList<>();
+        String remaining = block.trim();
+        while (remaining.length() > maxLength) {
+            int splitPoint = findSafeSplit(remaining, maxLength);
+            String piece = remaining.substring(0, splitPoint).trim();
+            if (!piece.isEmpty()) {
+                chunks.add(new ArticleChunk(piece, metadata));
+            }
+            int nextStart = Math.max(0, splitPoint - CHUNK_OVERLAP_CHARS);
+            remaining = remaining.substring(nextStart).trim();
+            if (remaining.length() <= maxLength) {
+                break;
+            }
+        }
+        if (!remaining.isEmpty()) {
+            chunks.add(new ArticleChunk(remaining, metadata));
+        }
+        return chunks;
     }
 
     private int findSafeSplit(String text, int targetLength) {

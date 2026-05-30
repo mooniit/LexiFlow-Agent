@@ -59,6 +59,7 @@ lexiflow:
       base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
       api-key: ${DASHSCOPE_API_KEY:}
       embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+      embedding-dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1536}
   storage:
     contracts-dir: ../storage/contracts
     knowledge-dir: ../storage/knowledge

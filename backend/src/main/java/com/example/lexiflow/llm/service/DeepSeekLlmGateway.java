@@ -98,7 +98,7 @@ public class DeepSeekLlmGateway implements LlmGateway {
                     .body(Object.class);
             response = objectMapper.convertValue(rawResponse, MAP_TYPE);
         } catch (RestClientException ex) {
-            throw new LlmGatewayException("DashScope embedding request failed", ex);
+            throw new LlmGatewayException("DashScope embedding request failed: " + ex.getMessage(), ex);
         }
 
         JsonNode root = objectMapper.valueToTree(response);

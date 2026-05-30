@@ -24,6 +24,7 @@ public class MockLlmGateway implements LlmGateway {
 
     private static final String PROVIDER = "mock";
     private static final String DEFAULT_MODEL = "mock-contract-reviewer";
+    private static final int EMBEDDING_DIMENSIONS = 1536;
 
     @Override
     public ChatResponse chat(ChatRequest request) {
@@ -93,10 +94,10 @@ public class MockLlmGateway implements LlmGateway {
     }
 
     private List<Double> deterministicEmbedding(String text) {
-        List<Double> embedding = new ArrayList<>(16);
+        List<Double> embedding = new ArrayList<>(EMBEDDING_DIMENSIONS);
         int hash = text == null ? 0 : text.hashCode();
-        for (int i = 0; i < 16; i++) {
-            int shifted = hash >> (i % 16);
+        for (int i = 0; i < EMBEDDING_DIMENSIONS; i++) {
+            int shifted = hash >> (i % 24);
             embedding.add((shifted & 0xFF) / 255.0);
         }
         return embedding;

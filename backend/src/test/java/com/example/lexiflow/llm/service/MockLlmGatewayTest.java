@@ -31,7 +31,7 @@ class MockLlmGatewayTest {
     void returnsEmbeddingForEachText() {
         Assertions.assertThat(gateway.embed(new EmbeddingRequest(null, List.of("a", "b"))).embeddings())
                 .hasSize(2)
-                .allSatisfy(vector -> Assertions.assertThat(vector).hasSize(16));
+                .allSatisfy(vector -> Assertions.assertThat(vector).hasSize(1536));
     }
 
     @Test

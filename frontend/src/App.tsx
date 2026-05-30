@@ -7,6 +7,9 @@ import ContractUploadPage from './pages/contracts/ContractUploadPage';
 import ContractReviewPage from './pages/contracts/ContractReviewPage';
 import ApprovalCenterPage from './pages/approvals/ApprovalCenterPage';
 import ReviewReportPage from './pages/contracts/ReviewReportPage';
+import UserAdminPage from './pages/admin/UserAdminPage';
+import ToolConfigPage from './pages/admin/ToolConfigPage';
+import ObservabilityPage from './pages/admin/ObservabilityPage';
 
 export default function App() {
   return (
@@ -20,6 +23,9 @@ export default function App() {
           <Route path="/contracts/:id" element={<ContractReviewPage />} />
           <Route path="/contracts/:id/report" element={<ReviewReportPage />} />
           <Route path="/approvals" element={<ApprovalCenterPage />} />
+          <Route path="/admin/users" element={<UserAdminPage />} />
+          <Route path="/admin/tools" element={<ToolConfigPage />} />
+          <Route path="/admin/observability" element={<ObservabilityPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

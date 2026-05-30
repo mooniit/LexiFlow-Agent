@@ -25,5 +25,14 @@ public interface UserPermissionMapper {
             ORDER BY p.code
             """)
     List<String> findPermissionCodes(Long userId);
+
+    @Select("""
+            SELECT DISTINCT p.code
+            FROM permission p
+            JOIN role_permission rp ON rp.permission_id = p.id
+            WHERE rp.role_id = #{roleId} AND p.deleted = FALSE
+            ORDER BY p.code
+            """)
+    List<String> findPermissionCodesByRole(Long roleId);
 }
 

@@ -22,21 +22,25 @@ public class ContractTextParser {
     private static final Charset GBK = Charset.forName("GBK");
 
     public ParseResult parse(Contract contract) {
+        return parsePath(Path.of(contract.getFilePath()), contract.getFileType());
+    }
+
+    public ParseResult parsePath(Path path, String fileType) {
         try {
-            if ("txt".equalsIgnoreCase(contract.getFileType())) {
-                TextContent text = readPlainText(Path.of(contract.getFilePath()));
-                return ParseResult.success(text.text(), "Read " + text.charsetName() + " plain text from uploaded txt file.");
+            if ("txt".equalsIgnoreCase(fileType) || "md".equalsIgnoreCase(fileType)) {
+                TextContent text = readPlainText(path);
+                return ParseResult.success(text.text(), "Read " + text.charsetName() + " plain text from file.");
             }
-            if ("docx".equalsIgnoreCase(contract.getFileType())) {
-                String text = readDocx(Path.of(contract.getFilePath()));
+            if ("docx".equalsIgnoreCase(fileType)) {
+                String text = readDocx(path);
                 if (text.isBlank()) {
                     return ParseResult.failure("DOCX file does not contain readable text.");
                 }
                 return ParseResult.success(text, "Read text from uploaded docx file.");
             }
-            return ParseResult.failure("Unsupported contract file type: " + contract.getFileType());
+            return ParseResult.failure("Unsupported file type: " + fileType);
         } catch (IOException ex) {
-            return ParseResult.failure("Failed to read contract file: " + ex.getMessage());
+            return ParseResult.failure("Failed to read file: " + ex.getMessage());
         }
     }
 

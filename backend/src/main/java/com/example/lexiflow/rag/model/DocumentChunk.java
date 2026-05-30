@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.example.lexiflow.common.model.AuditFields;
 import com.example.lexiflow.common.persistence.JsonbTypeHandler;
+import com.example.lexiflow.common.persistence.VectorTypeHandler;
 import org.apache.ibatis.type.JdbcType;
 
 @TableName("document_chunk")
@@ -13,8 +14,8 @@ public class DocumentChunk extends AuditFields {
     private Long documentId;
     private Integer chunkIndex;
     private String content;
-    @TableField(exist = false)
-    private Object embedding;
+    @TableField(jdbcType = JdbcType.OTHER, typeHandler = VectorTypeHandler.class)
+    private String embedding;
     @TableField(jdbcType = JdbcType.OTHER, typeHandler = JsonbTypeHandler.class)
     private String metadata;
 
@@ -50,11 +51,11 @@ public class DocumentChunk extends AuditFields {
         this.content = content;
     }
 
-    public Object getEmbedding() {
+    public String getEmbedding() {
         return embedding;
     }
 
-    public void setEmbedding(Object embedding) {
+    public void setEmbedding(String embedding) {
         this.embedding = embedding;
     }
 

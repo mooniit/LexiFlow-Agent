@@ -4,6 +4,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.lexiflow.common.util.JsonStrings;
 import com.example.lexiflow.config.StorageProperties;
 import com.example.lexiflow.contract.service.ContractTextParser;
+import com.example.lexiflow.llm.model.EmbeddingRequest;
+import com.example.lexiflow.llm.model.EmbeddingResponse;
+import com.example.lexiflow.llm.service.LlmGateway;
 import com.example.lexiflow.rag.mapper.DocumentChunkMapper;
 import com.example.lexiflow.rag.mapper.KnowledgeBaseMapper;
 import com.example.lexiflow.rag.mapper.KnowledgeDocumentMapper;
@@ -32,15 +35,20 @@ public class KnowledgeBaseService {
     private final DocumentChunkMapper chunkMapper;
     private final StorageProperties storageProperties;
     private final KnowledgeAccessGuard knowledgeAccessGuard;
+    private final ContractTextParser contractTextParser;
+    private final LlmGateway llmGateway;
 
     public KnowledgeBaseService(KnowledgeBaseMapper knowledgeBaseMapper, KnowledgeDocumentMapper documentMapper,
                                 DocumentChunkMapper chunkMapper, StorageProperties storageProperties,
-                                KnowledgeAccessGuard knowledgeAccessGuard) {
+                                KnowledgeAccessGuard knowledgeAccessGuard, ContractTextParser contractTextParser,
+                                LlmGateway llmGateway) {
         this.knowledgeBaseMapper = knowledgeBaseMapper;
         this.documentMapper = documentMapper;
         this.chunkMapper = chunkMapper;
         this.storageProperties = storageProperties;
         this.knowledgeAccessGuard = knowledgeAccessGuard;
+        this.contractTextParser = contractTextParser;
+        this.llmGateway = llmGateway;
     }
 
     @Transactional
@@ -72,8 +80,8 @@ public class KnowledgeBaseService {
         knowledgeAccessGuard.requireRead(base, user);
         String originalFilename = StringUtils.cleanPath(file.getOriginalFilename() == null ? "rule.txt" : file.getOriginalFilename());
         String fileType = resolveFileType(originalFilename);
-        if (!List.of("txt", "docx").contains(fileType)) {
-            throw new IllegalArgumentException("Only txt and docx knowledge documents are supported.");
+        if (!List.of("txt", "md", "docx").contains(fileType)) {
+            throw new IllegalArgumentException("Only txt, md, and docx knowledge documents are supported.");
         }
         try {
             Path targetDir = Path.of(storageProperties.knowledgeDir()).toAbsolutePath().normalize();
@@ -81,9 +89,10 @@ public class KnowledgeBaseService {
             Path target = targetDir.resolve(UUID.randomUUID() + "." + fileType).normalize();
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
 
-            String content = "txt".equals(fileType)
-                    ? Files.readString(target)
-                    : "";
+            var parseResult = contractTextParser.parsePath(target, fileType);
+            if (!parseResult.success()) {
+                throw new IllegalStateException("Failed to parse document: " + parseResult.message());
+            }
             KnowledgeDocument document = new KnowledgeDocument();
             document.setKnowledgeBaseId(base.getId());
             document.setTitle(StringUtils.hasText(title) ? title : originalFilename);
@@ -94,7 +103,7 @@ public class KnowledgeBaseService {
             document.setCreatedBy(user.id());
             document.setUpdatedBy(user.id());
             documentMapper.insert(document);
-            ingestChunks(document, content, user.id());
+            ingestChunks(document, parseResult.text(), user.id());
             return document;
         } catch (IOException ex) {
             throw new IllegalStateException("Failed to store knowledge document.", ex);
@@ -133,34 +142,110 @@ public class KnowledgeBaseService {
 
     private void ingestChunks(KnowledgeDocument document, String content, Long userId) {
         if (!StringUtils.hasText(content)) {
-            DocumentChunk chunk = buildChunk(document.getId(), 0, "DOCX parsing is not enabled yet. Upload txt rules for searchable content.", userId);
+            DocumentChunk chunk = buildChunk(document.getId(), 0, "Empty document content.", userId, null);
             chunkMapper.insert(chunk);
             return;
         }
-        List<String> chunks = split(content, 800);
+        List<String> chunks = splitByArticles(content, 800);
+        List<String> textsToEmbed = new ArrayList<>();
+        List<DocumentChunk> chunkRecords = new ArrayList<>();
         for (int i = 0; i < chunks.size(); i++) {
-            chunkMapper.insert(buildChunk(document.getId(), i, chunks.get(i), userId));
+            DocumentChunk chunk = buildChunk(document.getId(), i, chunks.get(i), userId, null);
+            chunkRecords.add(chunk);
+            textsToEmbed.add(chunks.get(i));
+        }
+        List<List<Double>> embeddings = batchEmbed(textsToEmbed, document.getId());
+        for (int i = 0; i < chunkRecords.size(); i++) {
+            DocumentChunk chunk = chunkRecords.get(i);
+            chunk.setEmbedding(vectorToString(embeddings.get(i)));
+            chunkMapper.insert(chunk);
         }
     }
 
-    private DocumentChunk buildChunk(Long documentId, int index, String content, Long userId) {
+    private List<List<Double>> batchEmbed(List<String> texts, Long documentId) {
+        try {
+            EmbeddingResponse response = llmGateway.embed(new EmbeddingRequest(null, texts));
+            return response.embeddings();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Embedding failed for document " + documentId + ": " + ex.getMessage(), ex);
+        }
+    }
+
+    private DocumentChunk buildChunk(Long documentId, int index, String content, Long userId, String embedding) {
         DocumentChunk chunk = new DocumentChunk();
         chunk.setDocumentId(documentId);
         chunk.setChunkIndex(index);
         chunk.setContent(content);
         chunk.setMetadata("{}");
+        chunk.setEmbedding(embedding);
         chunk.setCreatedBy(userId);
         chunk.setUpdatedBy(userId);
         return chunk;
     }
 
-    private List<String> split(String content, int maxLength) {
-        List<String> chunks = new ArrayList<>();
+    List<String> splitByArticles(String content, int maxLength) {
         String normalized = content.replace("\r\n", "\n").trim();
-        for (int start = 0; start < normalized.length(); start += maxLength) {
-            chunks.add(normalized.substring(start, Math.min(normalized.length(), start + maxLength)).trim());
+        List<String> blocks = splitByArticleBoundary(normalized);
+        List<String> chunks = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        for (String block : blocks) {
+            if (current.length() + block.length() > maxLength && current.length() > 0) {
+                chunks.add(current.toString().trim());
+                current = new StringBuilder();
+            }
+            if (current.length() > 0) {
+                current.append("\n");
+            }
+            current.append(block);
+            while (current.length() > maxLength * 2) {
+                int splitPoint = findSafeSplit(current.toString(), maxLength);
+                chunks.add(current.substring(0, splitPoint).trim());
+                current = new StringBuilder(current.substring(splitPoint).trim());
+            }
+        }
+        if (current.length() > 0) {
+            chunks.add(current.toString().trim());
         }
         return chunks.isEmpty() ? List.of(normalized) : chunks;
+    }
+
+    private List<String> splitByArticleBoundary(String text) {
+        List<String> blocks = new ArrayList<>();
+        String[] parts = text.split("(?=第[一二三四五六七八九十百千0-9]+条)");
+        for (String part : parts) {
+            String trimmed = part.trim();
+            if (!trimmed.isEmpty()) {
+                blocks.add(trimmed);
+            }
+        }
+        return blocks.isEmpty() ? List.of(text) : blocks;
+    }
+
+    private int findSafeSplit(String text, int targetLength) {
+        int candidate = text.lastIndexOf('\n', targetLength);
+        if (candidate > targetLength / 2) {
+            return candidate + 1;
+        }
+        candidate = text.lastIndexOf('。', targetLength);
+        if (candidate > targetLength / 2) {
+            return candidate + 1;
+        }
+        return targetLength;
+    }
+
+    private String vectorToString(List<Double> vector) {
+        if (vector == null) {
+            return null;
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < vector.size(); i++) {
+            if (i > 0) {
+                sb.append(",");
+            }
+            sb.append(vector.get(i));
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     private String resolveFileType(String filename) {

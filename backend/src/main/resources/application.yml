@@ -60,6 +60,8 @@ lexiflow:
       api-key: ${DASHSCOPE_API_KEY:}
       embedding-model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
       embedding-dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1536}
+  rag:
+    similarity-threshold: ${LEXIFLOW_RAG_SIMILARITY_THRESHOLD:0.40}
   storage:
     contracts-dir: ../storage/contracts
     knowledge-dir: ../storage/knowledge

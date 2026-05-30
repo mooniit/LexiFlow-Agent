@@ -10,6 +10,8 @@ import ReviewReportPage from './pages/contracts/ReviewReportPage';
 import UserAdminPage from './pages/admin/UserAdminPage';
 import ToolConfigPage from './pages/admin/ToolConfigPage';
 import ObservabilityPage from './pages/admin/ObservabilityPage';
+import KnowledgeQAPage from './pages/knowledge/KnowledgeQAPage';
+import KnowledgeManagePage from './pages/knowledge/KnowledgeManagePage';
 
 export default function App() {
   return (
@@ -26,6 +28,8 @@ export default function App() {
           <Route path="/admin/users" element={<UserAdminPage />} />
           <Route path="/admin/tools" element={<ToolConfigPage />} />
           <Route path="/admin/observability" element={<ObservabilityPage />} />
+          <Route path="/knowledge" element={<KnowledgeQAPage />} />
+          <Route path="/knowledge/manage" element={<KnowledgeManagePage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

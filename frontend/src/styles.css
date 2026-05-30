@@ -7,6 +7,7 @@ body {
   background: #f4f6f8;
   color: #1f2933;
   font-family: Inter, "Segoe UI", Arial, sans-serif;
+  font-size: 15px;
 }
 
 .login-shell {
@@ -17,8 +18,8 @@ body {
 }
 
 .login-panel {
-  width: min(420px, calc(100vw - 32px));
-  padding: 28px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 36px;
   background: #ffffff;
   border: 1px solid #d9e2ec;
   border-radius: 8px;
@@ -58,7 +59,7 @@ body {
 
 .side-nav nav {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   padding: 12px;
 }
 
@@ -66,11 +67,12 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 40px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 14px;
   color: #d9e2ec;
   border-radius: 6px;
   text-decoration: none;
+  font-size: 15px;
 }
 
 .side-nav a.active,
@@ -90,7 +92,7 @@ body {
 }
 
 .workspace {
-  padding: 24px;
+  padding: 28px;
 }
 
 .metric-grid {
@@ -117,6 +119,8 @@ body {
 .review-left pre {
   max-height: 70vh;
   overflow-y: auto;
+  font-size: 16px;
+  line-height: 1.8;
 }
 
 .review-center {

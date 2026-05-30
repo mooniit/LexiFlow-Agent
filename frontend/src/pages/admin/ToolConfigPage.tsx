@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, message, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd';
+import { Badge, Button, Card, Form, Input, message, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import { Edit, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -77,8 +77,12 @@ export default function ToolConfigPage() {
     {
       title: '风险等级',
       dataIndex: 'riskLevel',
-      width: 110,
-      render: (value: string) => <Tag color={value === 'HIGH' ? 'red' : value === 'MEDIUM' ? 'orange' : 'green'}>{value}</Tag>,
+      width: 100,
+      render: (value: string) => {
+        const labels: Record<string, string> = { HIGH: '高', MEDIUM: '中', LOW: '低' };
+        const colors: Record<string, string> = { HIGH: 'red', MEDIUM: 'orange', LOW: 'green' };
+        return <Tag color={colors[value]}>{labels[value] || value}</Tag>;
+      },
     },
     {
       title: '审批',
@@ -131,9 +135,9 @@ export default function ToolConfigPage() {
           <Form.Item name="riskLevel" label="风险等级" rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'LOW', label: 'LOW' },
-                { value: 'MEDIUM', label: 'MEDIUM' },
-                { value: 'HIGH', label: 'HIGH' },
+                { value: 'LOW', label: '低风险' },
+                { value: 'MEDIUM', label: '中风险' },
+                { value: 'HIGH', label: '高风险' },
               ]}
             />
           </Form.Item>

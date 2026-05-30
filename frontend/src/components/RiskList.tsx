@@ -18,7 +18,7 @@ export default function RiskList({ risks, loading }: Props) {
   return (
     <>
       {risks.map((r) => (
-        <Card key={r.id} size="small" style={{ marginBottom: 12 }} bordered loading={loading}>
+        <Card key={r.id} size="small" className={`risk-card risk-card-${r.riskLevel.toLowerCase()}`} style={{ marginBottom: 12 }} bordered loading={loading}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Tag color={riskColor[r.riskLevel] || 'default'}>{riskLabel[r.riskLevel] || r.riskLevel}</Tag>
             <Typography.Text strong>{r.clauseName || r.riskType}</Typography.Text>

@@ -129,7 +129,7 @@ export default function ApprovalCenterPage() {
       title: '状态',
       dataIndex: 'status',
       width: 100,
-      render: (v: string) => <Tag color={statusColors[v] || 'default'}>{statusLabels[v] || v}</Tag>,
+      render: (v: string) => <Tag color={statusColors[v] || 'default'} className={v === 'PENDING' ? 'tag-pending' : ''}>{statusLabels[v] || v}</Tag>,
     },
     {
       title: '创建时间',
@@ -183,7 +183,7 @@ export default function ApprovalCenterPage() {
               <Descriptions.Item label="审查任务">{selectedApproval?.reviewId}</Descriptions.Item>
               <Descriptions.Item label="审批类型">{selectedApproval?.approvalType}</Descriptions.Item>
               <Descriptions.Item label="状态">
-                <Tag color={statusColors[selectedApproval?.status || '']}>
+                <Tag color={statusColors[selectedApproval?.status || '']} className={selectedApproval?.status === 'PENDING' ? 'tag-pending' : ''}>
                   {statusLabels[selectedApproval?.status || '']}
                 </Tag>
               </Descriptions.Item>

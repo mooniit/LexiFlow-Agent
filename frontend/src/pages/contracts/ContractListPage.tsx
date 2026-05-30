@@ -75,8 +75,18 @@ export default function ContractListPage() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 90,
-      render: (v: string) => <Tag>{v}</Tag>,
+      width: 100,
+      render: (v: string) => {
+        const labels: Record<string, string> = {
+          UPLOADED: '已上传', PARSED: '已解析', PARSE_FAILED: '解析失败',
+          ARCHIVED: '已归档', DELETED: '已删除',
+        };
+        const colors: Record<string, string> = {
+          UPLOADED: 'blue', PARSED: 'green', PARSE_FAILED: 'red',
+          ARCHIVED: 'default', DELETED: 'default',
+        };
+        return <Tag color={colors[v] || 'default'}>{labels[v] || v}</Tag>;
+      },
     },
     {
       title: '上传时间',

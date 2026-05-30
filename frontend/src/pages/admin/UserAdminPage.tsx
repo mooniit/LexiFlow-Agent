@@ -1,6 +1,6 @@
 import { Button, Card, Form, Input, InputNumber, message, Modal, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import { Edit, Plus, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   createAdminUser,
   deleteAdminUser,
@@ -18,6 +18,22 @@ type UserFormValue = {
   departmentId?: number;
   enabled: boolean;
   roles: string[];
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  ADMIN: '管理员',
+  LEGAL_MANAGER: '法务主管',
+  LEGAL_REVIEWER: '法务人员',
+  BUSINESS_USER: '业务人员',
+  VIEWER: '只读用户',
+};
+
+const ROLE_COLORS: Record<string, string> = {
+  ADMIN: 'red',
+  LEGAL_MANAGER: 'orange',
+  LEGAL_REVIEWER: 'blue',
+  BUSINESS_USER: 'green',
+  VIEWER: 'default',
 };
 
 export default function UserAdminPage() {
@@ -111,7 +127,15 @@ export default function UserAdminPage() {
     {
       title: '角色',
       dataIndex: 'roles',
-      render: (value: string[]) => <Space wrap>{value.map((role) => <Tag key={role}>{role}</Tag>)}</Space>,
+      render: (value: string[]) => (
+        <Space wrap size={[4, 4]}>
+          {value.map((role) => (
+            <Tag key={role} color={ROLE_COLORS[role] || 'default'}>
+              {ROLE_LABELS[role] || role}
+            </Tag>
+          ))}
+        </Space>
+      ),
     },
     {
       title: '状态',
@@ -170,7 +194,10 @@ export default function UserAdminPage() {
           <Form.Item name="roles" label="角色">
             <Select
               mode="multiple"
-              options={roles.map((role) => ({ value: role.code, label: `${role.name} (${role.code})` }))}
+              options={roles.map((role) => ({
+                value: role.code,
+                label: ROLE_LABELS[role.code] || role.name,
+              }))}
             />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked">

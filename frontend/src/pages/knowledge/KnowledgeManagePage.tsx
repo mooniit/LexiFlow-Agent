@@ -127,18 +127,12 @@ export default function KnowledgeManagePage() {
     },
     {
       title: '操作',
-      width: 200,
+      width: 280,
       render: (_: unknown, record: KnowledgeBase) => (
-        <Space size="small">
-          <Button size="small" icon={<EyeOutlined />} onClick={() => openDocs(record)}>
-            文档
-          </Button>
-          <Button size="small" icon={<UploadOutlined />} onClick={() => { setSelectedBase(record); setUploadVisible(true); }}>
-            上传
-          </Button>
-          <Button size="small" onClick={() => batchImport(record.id).then(() => { message.success('批量导入成功'); refreshBases(); }).catch((err: any) => message.error(err.message))}>
-            批量导入
-          </Button>
+        <Space size="small" wrap>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => openDocs(record)}>文档</Button>
+          <Button size="small" icon={<UploadOutlined />} onClick={() => { setSelectedBase(record); setUploadVisible(true); }}>上传</Button>
+          <Button size="small" onClick={() => batchImport(record.id).then(() => { message.success('批量导入成功'); refreshBases(); }).catch((err: any) => message.error(err.message))}>批量导入</Button>
         </Space>
       ),
     },

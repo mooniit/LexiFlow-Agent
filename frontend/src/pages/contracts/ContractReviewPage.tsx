@@ -1,4 +1,4 @@
-import { Button, Card, Descriptions, Empty, Spin, Tag, Typography } from 'antd';
+import { Button, Card, Descriptions, Empty, Skeleton, Tag, Typography } from 'antd';
 import { FileTextOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -76,7 +76,22 @@ export default function ContractReviewPage() {
     return () => es.close();
   }, [review?.id, review?.status]);
 
-  if (loading) return <Spin style={{ display: 'block', marginTop: 80 }} size="large" />;
+  if (loading) {
+    return (
+      <>
+        <Typography.Title level={4} style={{ marginBottom: 16 }}>合同审查详情</Typography.Title>
+        <div className="review-layout">
+          <Card><Skeleton active paragraph={{ rows: 12 }} /></Card>
+          <div className="review-center">
+            <Card><Skeleton active paragraph={{ rows: 8 }} /></Card>
+          </div>
+          <div className="review-right">
+            <Card><Skeleton active paragraph={{ rows: 6 }} /></Card>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

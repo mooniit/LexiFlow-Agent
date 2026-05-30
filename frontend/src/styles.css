@@ -98,22 +98,44 @@ body {
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 20px;
+  margin-bottom: 20px;
 }
+
+.metric-grid .ant-card {
+  border-top: 3px solid #c8d6e5;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  transition: box-shadow 0.2s;
+}
+
+.metric-grid .ant-card:hover {
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+}
+
+.stat-total { border-top-color: #5c7c99 !important; }
+.stat-pending { border-top-color: #b8864e !important; }
+.stat-high { border-top-color: #b85c5c !important; }
 
 .main-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
-  gap: 16px;
+  gap: 20px;
 }
 
 /* Review detail page: three-column layout */
 .review-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(280px, 1fr);
-  gap: 16px;
+  gap: 20px;
   align-items: start;
+}
+
+.review-left,
+.review-right {
+  background: #fafbfc;
+  border-radius: 8px;
+  padding: 4px;
 }
 
 .review-left pre {
@@ -126,6 +148,26 @@ body {
 .review-center {
   display: flex;
   flex-direction: column;
+}
+
+/* Risk card with colored left border */
+.risk-card {
+  border-left: 4px solid transparent !important;
+  border-radius: 4px !important;
+}
+
+.risk-card-high { border-left-color: #b85c5c !important; }
+.risk-card-medium { border-left-color: #b8864e !important; }
+.risk-card-low { border-left-color: #5c7c99 !important; }
+
+/* Subtle pulse for pending status */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+.tag-pending {
+  animation: pulse-subtle 2s ease-in-out infinite;
 }
 
 @media (max-width: 1200px) {

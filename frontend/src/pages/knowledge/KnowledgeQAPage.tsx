@@ -1,103 +1,168 @@
 import {
   Button,
   Card,
-  Empty,
   Input,
-  List,
-  Select,
+  Skeleton,
   Space,
-  Spin,
   Tag,
   Typography,
 } from 'antd';
-import { SearchOutlined, LinkOutlined } from '@ant-design/icons';
+import { SearchOutlined, UserOutlined, RobotOutlined, LinkOutlined } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
-import { listKnowledgeBases, searchKnowledge, type RetrievedChunk } from '../../api/knowledge';
+import { searchKnowledge, type RetrievedChunk } from '../../api/knowledge';
 
-type HistoryItem = { question: string; chunks: RetrievedChunk[] };
+const EXAMPLE_QUESTIONS = [
+  '公司对付款周期有什么要求？',
+  '什么情况下需要法务主管审批？',
+  '销售合同中数据保护条款必须包含哪些内容？',
+  '客户要求无限赔偿责任时应该怎么处理？',
+];
+
+type Message = {
+  role: 'user' | 'assistant';
+  content: string;
+  chunks?: RetrievedChunk[];
+};
 
 export default function KnowledgeQAPage() {
-  const [bases, setBases] = useState<{ label: string; value: string }[]>([]);
   const [question, setQuestion] = useState('');
   const [searching, setSearching] = useState(false);
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<any>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    listKnowledgeBases()
-      .then((list) => setBases(list.map((b) => ({ label: b.name, value: b.id }))))
-      .catch(() => {});
-  }, []);
+    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' });
+  }, [messages]);
 
-  async function handleSearch() {
-    if (!question.trim()) return;
+  async function handleSearch(q?: string) {
+    const query = (q || question).trim();
+    if (!query || searching) return;
+    const userMsg: Message = { role: 'user', content: query };
+    setMessages((prev) => [...prev, userMsg]);
+    setQuestion('');
     setSearching(true);
     try {
-      const chunks = await searchKnowledge(question.trim());
-      setHistory((prev) => [{ question: question.trim(), chunks }, ...prev]);
-      setQuestion('');
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-    } catch (err: any) {
-      // ignore
+      const chunks = await searchKnowledge(query);
+      const aiMsg: Message = {
+        role: 'assistant',
+        content: chunks.length === 0 ? '未找到相关规则内容，请尝试其他问题或咨询法务部门。' : '',
+        chunks: chunks.length > 0 ? chunks : undefined,
+      };
+      setMessages((prev) => [...prev, aiMsg]);
+    } catch {
+      const errMsg: Message = { role: 'assistant', content: '检索失败，请稍后重试。' };
+      setMessages((prev) => [...prev, errMsg]);
     } finally {
       setSearching(false);
     }
   }
 
   return (
-    <>
-      <Typography.Title level={4} style={{ marginBottom: 16 }}>合规知识库问答</Typography.Title>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 64px - 56px)' }}>
+      <Typography.Title level={4} style={{ marginBottom: 12 }}>合规知识库问答</Typography.Title>
 
-      <Card style={{ marginBottom: 16 }}>
-        <Typography.Paragraph type="secondary" style={{ marginBottom: 12 }}>
-          基于公司合规规则库检索，回答内容引用真实规则来源，不编造规则。
-        </Typography.Paragraph>
+      {/* Chat area */}
+      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', paddingRight: 4, marginBottom: 12 }}>
+        {messages.length === 0 ? (
+          <div style={{ textAlign: 'center', paddingTop: 60 }}>
+            <RobotOutlined style={{ fontSize: 48, color: '#b0bec5', marginBottom: 16 }} />
+            <Typography.Title level={5} type="secondary">合规知识库助手</Typography.Title>
+            <Typography.Paragraph type="secondary" style={{ marginBottom: 20 }}>
+              基于公司合规规则库检索，不编造规则
+            </Typography.Paragraph>
+            <Space wrap style={{ justifyContent: 'center' }}>
+              {EXAMPLE_QUESTIONS.map((q) => (
+                <Tag
+                  key={q}
+                  style={{ cursor: 'pointer', padding: '6px 14px', fontSize: 14, borderRadius: 16 }}
+                  onClick={() => handleSearch(q)}
+                >
+                  {q}
+                </Tag>
+              ))}
+            </Space>
+          </div>
+        ) : (
+          messages.map((msg, i) => (
+            <div key={i} style={{ marginBottom: 20 }}>
+              {/* User message: right-aligned bubble */}
+              {msg.role === 'user' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                  <div style={{ maxWidth: '75%', padding: '12px 16px', borderRadius: '12px 12px 4px 12px', background: '#e3f2fd' }}>
+                    <Typography.Text style={{ fontSize: 15 }}>{msg.content}</Typography.Text>
+                  </div>
+                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#e8eaf6', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: 10, flexShrink: 0 }}>
+                    <UserOutlined style={{ color: '#3949ab', fontSize: 18 }} />
+                  </div>
+                </div>
+              )}
+
+              {/* Assistant: chunk cards directly shown */}
+              {msg.role === 'assistant' && (
+                <div>
+                  {!msg.chunks ? (
+                    <Typography.Text type="secondary">{msg.content}</Typography.Text>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e3f2fd', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <RobotOutlined style={{ color: '#1565c0', fontSize: 15 }} />
+                        </div>
+                        <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                          检索到 {msg.chunks.length} 条相关规则
+                        </Typography.Text>
+                      </div>
+                      {msg.chunks.map((chunk, j) => (
+                        <Card key={j} size="small" style={{ marginBottom: 8, borderLeft: '3px solid #90a4ae' }}>
+                          <Typography.Paragraph style={{ fontSize: 15, whiteSpace: 'pre-wrap', marginBottom: 6 }}>
+                            {chunk.content}
+                          </Typography.Paragraph>
+                          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                            <LinkOutlined /> 文档 #{chunk.documentId} · 相似度 {(chunk.score * 100).toFixed(0)}%
+                          </Typography.Text>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+
+        {searching && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e3f2fd', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <RobotOutlined style={{ color: '#1565c0', fontSize: 15 }} />
+              </div>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>检索中...</Typography.Text>
+            </div>
+            <Skeleton active paragraph={{ rows: 3 }} />
+          </div>
+        )}
+      </div>
+
+      {/* Input bar */}
+      <div style={{ flexShrink: 0, borderTop: '1px solid #e8e8e8', paddingTop: 12 }}>
         <Space.Compact style={{ width: '100%' }}>
           <Input
+            ref={inputRef}
             size="large"
-            placeholder="输入合规问题，例如：公司对付款周期有什么要求？"
+            placeholder="输入合规问题，或点击上方示例"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            onPressEnter={handleSearch}
+            onPressEnter={() => handleSearch()}
+            disabled={searching}
           />
-          <Button type="primary" size="large" icon={<SearchOutlined />} loading={searching} onClick={handleSearch}>
-            检索
+          <Button type="primary" size="large" icon={<SearchOutlined />} loading={searching} onClick={() => handleSearch()}>
+            发送
           </Button>
         </Space.Compact>
-      </Card>
-
-      {history.length === 0 && !searching && (
-        <Empty description="输入问题，开始合规知识检索" />
-      )}
-
-      {history.map((item, i) => (
-        <Card key={i} style={{ marginBottom: 16 }}>
-          <Typography.Title level={5} style={{ marginBottom: 12 }}>
-            问题：{item.question}
-          </Typography.Title>
-
-          {item.chunks.length === 0 ? (
-            <Typography.Text type="secondary">未找到相关规则内容。</Typography.Text>
-          ) : (
-            item.chunks.map((chunk, j) => (
-              <Card key={j} size="small" style={{ marginBottom: 8 }} bordered>
-                <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 8 }}>
-                  {chunk.content}
-                </Typography.Paragraph>
-                <Space>
-                  <Tag>{`相似度: ${(chunk.score * 100).toFixed(0)}%`}</Tag>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    <LinkOutlined /> 文档 #{chunk.documentId} · Chunk #{chunk.chunkId}
-                  </Typography.Text>
-                </Space>
-              </Card>
-            ))
-          )}
-        </Card>
-      ))}
-
-      {searching && <Spin style={{ display: 'block', margin: '20px auto' }} />}
-      <div ref={bottomRef} />
-    </>
+      </div>
+    </div>
   );
 }

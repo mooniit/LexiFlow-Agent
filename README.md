@@ -64,7 +64,7 @@ $env:DASHSCOPE_EMBEDDING_MODEL="text-embedding-v4"
 
 ```bash
 cd backend
-mvn spring-boot:run -Dspring-boot.run.profiles=dev
+mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
 
 ### 4. 检查健康状态

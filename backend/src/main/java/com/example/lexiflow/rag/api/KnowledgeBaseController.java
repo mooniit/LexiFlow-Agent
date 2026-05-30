@@ -70,6 +70,12 @@ public class KnowledgeBaseController {
         return ApiResponse.ok(retrievalService.retrieve(request.reviewId(), request.query(), request.limit() == null ? 5 : request.limit(), user));
     }
 
+    @PostMapping("/{id}/batch-import")
+    public ApiResponse<java.util.Map<String, Object>> batchImport(@PathVariable Long id,
+                                                                   @AuthenticationPrincipal CurrentUser user) {
+        return ApiResponse.ok(knowledgeBaseService.batchImportFromStorage(id, user));
+    }
+
     public record CreateKnowledgeBaseRequest(@NotBlank String name, String visibility) {
     }
 

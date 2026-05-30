@@ -19,9 +19,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -130,6 +133,69 @@ public class KnowledgeBaseService {
                 .eq(DocumentChunk::getDocumentId, documentId)
                 .eq(DocumentChunk::getDeleted, false)
                 .orderByAsc(DocumentChunk::getChunkIndex));
+    }
+
+    @Transactional
+    public Map<String, Object> batchImportFromStorage(Long knowledgeBaseId, CurrentUser user) {
+        KnowledgeBase base = requireBase(knowledgeBaseId);
+        knowledgeAccessGuard.requireRead(base, user);
+        Path storageDir = Path.of(storageProperties.knowledgeDir()).toAbsolutePath().normalize();
+        if (!Files.isDirectory(storageDir)) {
+            return Map.of("imported", 0, "skipped", 0, "errors", List.of("Knowledge storage directory not found: " + storageDir));
+        }
+        int imported = 0;
+        int skipped = 0;
+        List<String> errors = new ArrayList<>();
+        try (Stream<Path> files = Files.list(storageDir)) {
+            List<Path> candidates = files
+                    .filter(f -> {
+                        String name = f.getFileName().toString().toLowerCase(Locale.ROOT);
+                        return name.endsWith(".md") || name.endsWith(".docx") || name.endsWith(".txt");
+                    })
+                    .sorted()
+                    .toList();
+            for (Path filePath : candidates) {
+                String filename = filePath.getFileName().toString();
+                String fileType = resolveFileType(filename);
+                String title = filename.substring(0, filename.lastIndexOf('.'));
+                boolean exists = documentMapper.exists(new LambdaQueryWrapper<KnowledgeDocument>()
+                        .eq(KnowledgeDocument::getKnowledgeBaseId, knowledgeBaseId)
+                        .eq(KnowledgeDocument::getTitle, title)
+                        .eq(KnowledgeDocument::getDeleted, false));
+                if (exists) {
+                    skipped++;
+                    continue;
+                }
+                try {
+                    var parseResult = contractTextParser.parsePath(filePath, fileType);
+                    if (!parseResult.success()) {
+                        errors.add(filename + ": " + parseResult.message());
+                        continue;
+                    }
+                    KnowledgeDocument document = new KnowledgeDocument();
+                    document.setKnowledgeBaseId(base.getId());
+                    document.setTitle(title);
+                    document.setDocumentType("RULE");
+                    document.setDocumentStatus("ACTIVE");
+                    document.setFilePath(filePath.toString());
+                    document.setMetadata("{\"originalFilename\":" + JsonStrings.quote(filename) + ",\"fileType\":" + JsonStrings.quote(fileType) + ",\"source\":\"batch-import\"}");
+                    document.setCreatedBy(user.id());
+                    document.setUpdatedBy(user.id());
+                    documentMapper.insert(document);
+                    ingestChunks(document, parseResult.text(), user.id());
+                    imported++;
+                } catch (Exception ex) {
+                    errors.add(filename + ": " + ex.getMessage());
+                }
+            }
+        } catch (IOException ex) {
+            errors.add("Failed to list storage directory: " + ex.getMessage());
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("imported", imported);
+        result.put("skipped", skipped);
+        result.put("errors", errors);
+        return result;
     }
 
     public KnowledgeBase requireBase(Long id) {

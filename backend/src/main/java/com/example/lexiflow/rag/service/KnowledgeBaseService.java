@@ -142,17 +142,18 @@ public class KnowledgeBaseService {
 
     private void ingestChunks(KnowledgeDocument document, String content, Long userId) {
         if (!StringUtils.hasText(content)) {
-            DocumentChunk chunk = buildChunk(document.getId(), 0, "Empty document content.", userId, null);
+            DocumentChunk chunk = buildChunk(document.getId(), 0, "Empty document content.", userId, null, "{}");
             chunkMapper.insert(chunk);
             return;
         }
-        List<String> chunks = splitByArticles(content, 800);
+        List<ArticleChunk> articleChunks = splitByArticlesWithMeta(content, 800);
         List<String> textsToEmbed = new ArrayList<>();
         List<DocumentChunk> chunkRecords = new ArrayList<>();
-        for (int i = 0; i < chunks.size(); i++) {
-            DocumentChunk chunk = buildChunk(document.getId(), i, chunks.get(i), userId, null);
+        for (int i = 0; i < articleChunks.size(); i++) {
+            ArticleChunk ac = articleChunks.get(i);
+            DocumentChunk chunk = buildChunk(document.getId(), i, ac.content(), userId, null, ac.articleRef());
             chunkRecords.add(chunk);
-            textsToEmbed.add(chunks.get(i));
+            textsToEmbed.add(ac.content());
         }
         List<List<Double>> embeddings = batchEmbed(textsToEmbed, document.getId());
         for (int i = 0; i < chunkRecords.size(); i++) {
@@ -171,42 +172,75 @@ public class KnowledgeBaseService {
         }
     }
 
-    private DocumentChunk buildChunk(Long documentId, int index, String content, Long userId, String embedding) {
+    private DocumentChunk buildChunk(Long documentId, int index, String content, Long userId, String embedding, String metadata) {
         DocumentChunk chunk = new DocumentChunk();
         chunk.setDocumentId(documentId);
         chunk.setChunkIndex(index);
         chunk.setContent(content);
-        chunk.setMetadata("{}");
+        chunk.setMetadata(metadata != null ? metadata : "{}");
         chunk.setEmbedding(embedding);
         chunk.setCreatedBy(userId);
         chunk.setUpdatedBy(userId);
         return chunk;
     }
 
-    List<String> splitByArticles(String content, int maxLength) {
+    record ArticleChunk(String content, String articleRef) {}
+
+    private String extractArticleRef(String block) {
+        if (block == null || block.isBlank()) {
+            return null;
+        }
+        int end = block.indexOf('\n');
+        String firstLine = end > 0 ? block.substring(0, end) : block.substring(0, Math.min(block.length(), 60));
+        int tiaoIdx = firstLine.indexOf("条");
+        if (tiaoIdx > 0) {
+            int start = Math.max(0, tiaoIdx - 12);
+            return firstLine.substring(start, tiaoIdx + 1).trim();
+        }
+        return null;
+    }
+
+    private String buildArticleMeta(List<String> articleRefs) {
+        if (articleRefs == null || articleRefs.isEmpty()) {
+            return "{}";
+        }
+        String joined = articleRefs.stream()
+                .map(ref -> "\"" + ref + "\"")
+                .reduce((a, b) -> a + "," + b)
+                .orElse("");
+        return "{\"articles\":[" + joined + "]}";
+    }
+
+    List<ArticleChunk> splitByArticlesWithMeta(String content, int maxLength) {
         String normalized = content.replace("\r\n", "\n").trim();
         List<String> blocks = splitByArticleBoundary(normalized);
-        List<String> chunks = new ArrayList<>();
+        List<ArticleChunk> chunks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
+        List<String> currentArticles = new ArrayList<>();
         for (String block : blocks) {
+            String articleRef = extractArticleRef(block);
             if (current.length() + block.length() > maxLength && current.length() > 0) {
-                chunks.add(current.toString().trim());
+                chunks.add(new ArticleChunk(current.toString().trim(), buildArticleMeta(currentArticles)));
                 current = new StringBuilder();
+                currentArticles = new ArrayList<>();
             }
             if (current.length() > 0) {
                 current.append("\n");
             }
             current.append(block);
+            if (articleRef != null) {
+                currentArticles.add(articleRef);
+            }
             while (current.length() > maxLength * 2) {
                 int splitPoint = findSafeSplit(current.toString(), maxLength);
-                chunks.add(current.substring(0, splitPoint).trim());
+                chunks.add(new ArticleChunk(current.substring(0, splitPoint).trim(), buildArticleMeta(currentArticles)));
                 current = new StringBuilder(current.substring(splitPoint).trim());
             }
         }
         if (current.length() > 0) {
-            chunks.add(current.toString().trim());
+            chunks.add(new ArticleChunk(current.toString().trim(), buildArticleMeta(currentArticles)));
         }
-        return chunks.isEmpty() ? List.of(normalized) : chunks;
+        return chunks.isEmpty() ? List.of(new ArticleChunk(normalized, "{}")) : chunks;
     }
 
     private List<String> splitByArticleBoundary(String text) {

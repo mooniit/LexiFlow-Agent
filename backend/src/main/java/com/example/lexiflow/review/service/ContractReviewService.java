@@ -2,6 +2,7 @@ package com.example.lexiflow.review.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.lexiflow.approval.service.ApprovalService;
+import com.example.lexiflow.approval.service.ApprovalEventMessage;
 import com.example.lexiflow.agent.model.AgentStepType;
 import com.example.lexiflow.agent.model.AgentTaskStatus;
 import com.example.lexiflow.agent.service.AgentStateMachine;
@@ -242,6 +243,27 @@ public class ContractReviewService {
         }
         fail(review, reason, user.id());
         return requireById(reviewId);
+    }
+
+    @Transactional
+    public ContractReview handleApprovalEvent(ApprovalEventMessage message) {
+        CurrentUser user = loadCurrentUser(message.operatorId());
+        ContractReview review = requireById(message.reviewId());
+        if ("APPROVED".equals(message.action())) {
+            if (AgentTaskStatus.COMPLETED.name().equals(review.getStatus())) {
+                eventBus.publish(review.getId(), "APPROVAL_EVENT_IGNORED", "Approval event already applied.");
+                return review;
+            }
+            return resumeAfterApproval(message.reviewId(), user);
+        }
+        if ("REJECTED".equals(message.action()) || "REVISION_REQUESTED".equals(message.action())) {
+            if (AgentTaskStatus.FAILED.name().equals(review.getStatus())) {
+                eventBus.publish(review.getId(), "APPROVAL_EVENT_IGNORED", "Approval event already applied.");
+                return review;
+            }
+            return rejectAfterApproval(message.reviewId(), user, message.comment());
+        }
+        throw new IllegalArgumentException("Unsupported approval event action: " + message.action());
     }
 
     public ReviewReport report(Long reviewId) {

@@ -7,14 +7,14 @@ import com.example.lexiflow.approval.model.ApprovalHistory;
 import com.example.lexiflow.approval.model.ApprovalRequest;
 import com.example.lexiflow.common.util.JsonStrings;
 import com.example.lexiflow.review.model.ClauseRisk;
-import com.example.lexiflow.review.service.ContractReviewService;
 import com.example.lexiflow.review.service.ReviewEventBus;
 import com.example.lexiflow.security.CurrentUser;
 import java.time.OffsetDateTime;
 import java.util.List;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class ApprovalService {
@@ -22,14 +22,14 @@ public class ApprovalService {
     private final ApprovalRequestMapper approvalRequestMapper;
     private final ApprovalHistoryMapper approvalHistoryMapper;
     private final ReviewEventBus eventBus;
-    private final ContractReviewService reviewService;
+    private final ApprovalEventPublisher approvalEventPublisher;
 
     public ApprovalService(ApprovalRequestMapper approvalRequestMapper, ApprovalHistoryMapper approvalHistoryMapper,
-                           ReviewEventBus eventBus, @Lazy ContractReviewService reviewService) {
+                           ReviewEventBus eventBus, ApprovalEventPublisher approvalEventPublisher) {
         this.approvalRequestMapper = approvalRequestMapper;
         this.approvalHistoryMapper = approvalHistoryMapper;
         this.eventBus = eventBus;
-        this.reviewService = reviewService;
+        this.approvalEventPublisher = approvalEventPublisher;
     }
 
     public List<ApprovalRequest> list(String status, Long reviewId) {
@@ -87,21 +87,21 @@ public class ApprovalService {
     @Transactional
     public ApprovalRequest approve(Long id, String comment, CurrentUser user) {
         ApprovalRequest request = resolve(id, "APPROVED", comment, user);
-        reviewService.resumeAfterApproval(request.getReviewId(), user);
+        publishAfterCommit(toEvent(request, "APPROVED", comment, user));
         return request;
     }
 
     @Transactional
     public ApprovalRequest reject(Long id, String comment, CurrentUser user) {
         ApprovalRequest request = resolve(id, "REJECTED", comment, user);
-        reviewService.rejectAfterApproval(request.getReviewId(), user, safeComment(comment));
+        publishAfterCommit(toEvent(request, "REJECTED", safeComment(comment), user));
         return request;
     }
 
     @Transactional
     public ApprovalRequest requestRevision(Long id, String comment, CurrentUser user) {
         ApprovalRequest request = resolve(id, "REVISION_REQUESTED", comment, user);
-        reviewService.rejectAfterApproval(request.getReviewId(), user, "Revision requested: " + safeComment(comment));
+        publishAfterCommit(toEvent(request, "REVISION_REQUESTED", "Revision requested: " + safeComment(comment), user));
         return request;
     }
 
@@ -128,6 +128,30 @@ public class ApprovalService {
         addHistory(request.getId(), toAction(status), user.id(), comment, "{}");
         eventBus.publish(request.getReviewId(), "APPROVAL_" + status, "Approval request " + status.toLowerCase() + ".");
         return request;
+    }
+
+    private ApprovalEventMessage toEvent(ApprovalRequest request, String action, String comment, CurrentUser user) {
+        return new ApprovalEventMessage(
+                request.getId(),
+                request.getReviewId(),
+                user.id(),
+                user.username(),
+                action,
+                comment
+        );
+    }
+
+    private void publishAfterCommit(ApprovalEventMessage message) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    approvalEventPublisher.publish(message);
+                }
+            });
+        } else {
+            approvalEventPublisher.publish(message);
+        }
     }
 
     private ApprovalRequest requirePending(Long id) {

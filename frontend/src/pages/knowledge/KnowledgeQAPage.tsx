@@ -165,7 +165,19 @@ export default function KnowledgeQAPage() {
           dataSource={history}
           locale={{ emptyText: '暂无历史' }}
           renderItem={(item) => (
-            <List.Item style={{ cursor: 'pointer' }} onClick={() => handleSearch(item.question)}>
+            <List.Item style={{ cursor: 'pointer' }} onClick={() => {
+              let chunks: RetrievedChunk[] | undefined;
+              try { chunks = JSON.parse(item.retrievedChunks || '[]'); } catch { chunks = undefined; }
+              setMessages([
+                { role: 'user', content: item.question },
+                {
+                  role: 'assistant',
+                  content: item.answer,
+                  chunks: chunks?.length ? chunks : undefined,
+                  historyId: item.id,
+                },
+              ]);
+            }}>
               <List.Item.Meta
                 title={<Typography.Text ellipsis>{item.question}</Typography.Text>}
                 description={<Typography.Text type="secondary" ellipsis>{item.answer}</Typography.Text>}

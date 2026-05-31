@@ -12,6 +12,7 @@ import ToolConfigPage from './pages/admin/ToolConfigPage';
 import ObservabilityPage from './pages/admin/ObservabilityPage';
 import KnowledgeQAPage from './pages/knowledge/KnowledgeQAPage';
 import KnowledgeManagePage from './pages/knowledge/KnowledgeManagePage';
+import AgentTracePage from './pages/contracts/AgentTracePage';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/contracts/upload" element={<ContractUploadPage />} />
           <Route path="/contracts/:id" element={<ContractReviewPage />} />
           <Route path="/contracts/:id/report" element={<ReviewReportPage />} />
+          <Route path="/contracts/:id/trace" element={<AgentTracePage />} />
           <Route path="/approvals" element={<ApprovalCenterPage />} />
           <Route path="/admin/users" element={<UserAdminPage />} />
           <Route path="/admin/tools" element={<ToolConfigPage />} />

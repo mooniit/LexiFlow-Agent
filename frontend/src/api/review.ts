@@ -70,6 +70,26 @@ export function rerunReview(id: string) {
   return api<ContractReview>(`/api/reviews/${id}/rerun`, { method: 'POST' });
 }
 
+export type StateTransition = {
+  id: string;
+  reviewId: string;
+  fromStatus: string;
+  toStatus: string;
+  reason: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type ReviewTrace = {
+  review: ContractReview;
+  steps: AgentStep[];
+  transitions: StateTransition[];
+};
+
+export function getReviewTrace(id: string) {
+  return api<ReviewTrace>(`/api/reviews/${id}/trace`);
+}
+
 export function subscribeReviewEvents(reviewId: string) {
   return createSSE(`/api/reviews/${reviewId}/events`);
 }

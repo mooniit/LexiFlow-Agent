@@ -1,6 +1,6 @@
-import { Button, Card, Descriptions, Empty, Skeleton, Tag, Typography } from 'antd';
-import { BranchesOutlined, FileTextOutlined } from '@ant-design/icons';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Card, Descriptions, Skeleton, Tag, Typography } from 'antd';
+import { BranchesOutlined, FileTextOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getContract, getOriginalText, type Contract } from '../../api/contract';
 import {
@@ -28,8 +28,20 @@ export default function ContractReviewPage() {
   const [review, setReview] = useState<ContractReview | null>(null);
   const [steps, setSteps] = useState<AgentStep[]>([]);
   const [risks, setRisks] = useState<ClauseRisk[]>([]);
-  const [events, setEvents] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const refreshReviewData = useCallback(async (reviewId: string) => {
+    try {
+      const [r, stepList, riskList] = await Promise.all([
+        getReview(reviewId),
+        getReviewSteps(reviewId),
+        getReviewRisks(reviewId),
+      ]);
+      setReview(r);
+      setSteps(stepList);
+      setRisks(riskList);
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     async function load() {
@@ -37,45 +49,33 @@ export default function ContractReviewPage() {
         const c = await getContract(contractId);
         setContract(c);
         getOriginalText(contractId).then((r) => setOriginalText(r.text)).catch(() => setOriginalText('（无法加载原文）'));
-
         if (initialReviewId) {
-          const r = await getReview(initialReviewId);
-          setReview(r);
-          const [stepList, riskList] = await Promise.all([
-            getReviewSteps(r.id),
-            getReviewRisks(r.id),
-          ]);
-          setSteps(stepList);
-          setRisks(riskList);
+          await refreshReviewData(initialReviewId);
         }
       } catch { /* handled */ } finally {
         setLoading(false);
       }
     }
     load();
-  }, [contractId, initialReviewId]);
+  }, [contractId, initialReviewId, refreshReviewData]);
 
   useEffect(() => {
     if (!review || review.status === 'COMPLETED' || review.status === 'FAILED' || review.status === 'CANCELLED') return;
 
     const es = subscribeReviewEvents(review.id);
-    es.onmessage = (e) => {
-      setEvents((prev) => [...prev, e.data]);
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === 'STATUS_CHANGE') {
-          setReview((prev) => prev ? { ...prev, status: data.status } : prev);
-        } else if (data.type === 'STEP_COMPLETE') {
-          setSteps((prev) => [...prev, data.step]);
-        } else if (data.type === 'REVIEW_COMPLETE') {
-          setReview(data.review);
-          es.close();
-        }
-      } catch { /* non-JSON */ }
-    };
+    es.onmessage = () => { refreshReviewData(review.id); };
     es.onerror = () => es.close();
     return () => es.close();
-  }, [review?.id, review?.status]);
+  }, [review?.id, review?.status, refreshReviewData]);
+
+  function statusLabel(s: string) {
+    const labels: Record<string, string> = {
+      CREATED: '已创建', PARSING: '解析中', EXTRACTING: '条款抽取',
+      RETRIEVING_RULES: '规则检索', ANALYZING: '风险分析', WAITING_APPROVAL: '等待审批',
+      GENERATING_REPORT: '生成报告', COMPLETED: '已完成', FAILED: '失败', CANCELLED: '已取消',
+    };
+    return labels[s] || s;
+  }
 
   if (loading) {
     return (
@@ -102,12 +102,17 @@ export default function ContractReviewPage() {
         </Typography.Title>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {review && (
-            <Tag color={review.status === 'COMPLETED' ? 'green' : review.status === 'FAILED' ? 'red' : 'blue'}>
-              {review.status}
+            <Tag color={review.status === 'COMPLETED' ? 'green' : review.status === 'FAILED' ? 'red' : review.status === 'WAITING_APPROVAL' ? 'orange' : 'blue'}>
+              {statusLabel(review.status)}
             </Tag>
           )}
           {review ? (
             <>
+              {review.status === 'WAITING_APPROVAL' && (
+                <Button icon={<ExclamationCircleOutlined />} onClick={() => navigate('/approvals')}>
+                  需要审批
+                </Button>
+              )}
               {review.status === 'COMPLETED' && (
                 <Button type="primary" icon={<FileTextOutlined />} onClick={() => navigate(`/contracts/${contractId}/report?reviewId=${review.id}`)}>
                   查看报告
@@ -118,24 +123,28 @@ export default function ContractReviewPage() {
               </Button>
             </>
           ) : (
-            <Button
-              type="primary"
-              icon={<BranchesOutlined />}
-              onClick={async () => {
-                try {
-                  const r = await createReview(contractId);
-                  navigate(`/contracts/${contractId}?reviewId=${r.id}`, { replace: true });
-                  window.location.reload();
-                } catch (err: any) {
-                  // ignore
-                }
-              }}
-            >
+            <Button type="primary" icon={<BranchesOutlined />} onClick={async () => {
+              try {
+                const r = await createReview(contractId);
+                navigate(`/contracts/${contractId}?reviewId=${r.id}`, { replace: true });
+                window.location.reload();
+              } catch { /* ignore */ }
+            }}>
               发起审查
             </Button>
           )}
         </div>
       </div>
+
+      {review?.status === 'FAILED' && (
+        <Alert
+          type="error"
+          showIcon
+          message="审查失败"
+          description={review.failureReason || '未知错误，请重新发起审查。'}
+          style={{ marginBottom: 16 }}
+        />
+      )}
 
       <div className="review-layout">
         {/* Left: Original contract text */}
@@ -154,7 +163,7 @@ export default function ContractReviewPage() {
 
         {/* Right: Agent Timeline + SSE */}
         <div className="review-right">
-          <ReviewTimeline review={review} steps={steps} sseEvents={events} />
+          <ReviewTimeline review={review} steps={steps} sseEvents={[]} />
 
           {contract && (
             <Card title="合同信息" size="small" style={{ marginTop: 12 }}>

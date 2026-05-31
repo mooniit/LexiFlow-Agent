@@ -8,11 +8,14 @@ import {
   getReview,
   getReviewRisks,
   getReviewSteps,
+  getReviewTrace,
   listReviews,
   subscribeReviewEvents,
   type ContractReview,
   type AgentStep,
   type ClauseRisk,
+  type ReviewEvent,
+  type ReviewTrace,
 } from '../../api/review';
 import RiskList from '../../components/RiskList';
 import ReviewTimeline from '../../components/ReviewTimeline';
@@ -29,18 +32,22 @@ export default function ContractReviewPage() {
   const [review, setReview] = useState<ContractReview | null>(null);
   const [steps, setSteps] = useState<AgentStep[]>([]);
   const [risks, setRisks] = useState<ClauseRisk[]>([]);
+  const [trace, setTrace] = useState<ReviewTrace | null>(null);
+  const [sseEvents, setSseEvents] = useState<ReviewEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refreshReviewData = useCallback(async (reviewId: string) => {
     try {
-      const [r, stepList, riskList] = await Promise.all([
+      const [r, stepList, riskList, traceResult] = await Promise.allSettled([
         getReview(reviewId),
         getReviewSteps(reviewId),
         getReviewRisks(reviewId),
+        getReviewTrace(reviewId),
       ]);
-      setReview(r);
-      setSteps(stepList);
-      setRisks(riskList);
+      if (r.status === 'fulfilled') setReview(r.value);
+      if (stepList.status === 'fulfilled') setSteps(stepList.value);
+      if (riskList.status === 'fulfilled') setRisks(riskList.value);
+      if (traceResult.status === 'fulfilled') setTrace(traceResult.value);
     } catch { /* ignore */ }
   }, []);
 
@@ -70,10 +77,33 @@ export default function ContractReviewPage() {
   useEffect(() => {
     if (!review || review.status === 'COMPLETED' || review.status === 'FAILED' || review.status === 'CANCELLED') return;
 
+    const eventTypes = [
+      'CONNECTED', 'CREATED', 'PARSING', 'EXTRACTING', 'RETRIEVING_RULES', 'ANALYZING',
+      'WAITING_APPROVAL', 'GENERATING_REPORT', 'COMPLETED', 'FAILED', 'CLAUSE_EXTRACTION',
+      'RULE_RETRIEVAL', 'RISK_ANALYSIS', 'CONTRACT_PARSE',
+    ];
     const es = subscribeReviewEvents(review.id);
-    es.onmessage = () => { refreshReviewData(review.id); };
+    const handleEvent = (event: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(event.data) as ReviewEvent;
+        setSseEvents((prev) => [...prev.slice(-11), parsed]);
+      } catch {
+        setSseEvents((prev) => [...prev.slice(-11), {
+          reviewId: review.id,
+          type: event.type,
+          message: event.data,
+          occurredAt: new Date().toISOString(),
+        }]);
+      }
+      refreshReviewData(review.id);
+    };
+    eventTypes.forEach((type) => es.addEventListener(type, handleEvent));
+    es.onmessage = handleEvent;
     es.onerror = () => es.close();
-    return () => es.close();
+    return () => {
+      eventTypes.forEach((type) => es.removeEventListener(type, handleEvent));
+      es.close();
+    };
   }, [review?.id, review?.status, refreshReviewData]);
 
   function statusLabel(s: string) {
@@ -171,7 +201,14 @@ export default function ContractReviewPage() {
 
         {/* Right: Agent Timeline + SSE */}
         <div className="review-right">
-          <ReviewTimeline review={review} steps={steps} sseEvents={[]} />
+          <ReviewTimeline
+            review={review}
+            steps={steps}
+            sseEvents={sseEvents}
+            retrievalLogs={trace?.retrievalLogs || []}
+            llmCalls={trace?.llmCalls || []}
+            risks={risks}
+          />
 
           {contract && (
             <Card title="合同信息" size="small" style={{ marginTop: 12 }}>

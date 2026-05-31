@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { listReviews, type ContractReview } from '../../api/review';
 import { listContracts, type Contract } from '../../api/contract';
 
+const reviewedStatuses = new Set(['COMPLETED', 'WAITING_APPROVAL']);
+
 export default function DashboardPage() {
   const [reviews, setReviews] = useState<ContractReview[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -24,8 +26,24 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []);
 
-  const pendingReviews = reviews.filter((r) => r.status === 'WAITING_APPROVAL').length;
-  const highRiskCount = reviews.filter((r) => r.overallRiskLevel === 'HIGH').length;
+  const reviewedTasks = useMemo(
+    () => reviews.filter((r) => reviewedStatuses.has(r.status)),
+    [reviews],
+  );
+  const recentReviewedTasks = useMemo(() => {
+    const latestByContract = new Map<string, ContractReview>();
+    [...reviewedTasks]
+      .sort((a, b) => Number(b.id) - Number(a.id))
+      .forEach((review) => {
+        if (!latestByContract.has(review.contractId)) {
+          latestByContract.set(review.contractId, review);
+        }
+      });
+    return Array.from(latestByContract.values());
+  }, [reviewedTasks]);
+
+  const pendingReviews = reviewedTasks.filter((r) => r.status === 'WAITING_APPROVAL').length;
+  const highRiskCount = reviewedTasks.filter((r) => r.overallRiskLevel === 'HIGH').length;
 
   const contractNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -63,7 +81,7 @@ export default function DashboardPage() {
       <section className="metric-grid">
         <Card className="stat-total">
           {loading ? <Skeleton active paragraph={{ rows: 1 }} /> :
-            <Statistic title="审查任务" value={reviews.length} prefix={<FileText size={18} />} />
+            <Statistic title="已审查任务" value={reviewedTasks.length} prefix={<FileText size={18} />} />
           }
         </Card>
         <Card className="stat-pending">
@@ -81,7 +99,7 @@ export default function DashboardPage() {
         <Card title="最近审查任务">
           {loading ? (
             <Skeleton active paragraph={{ rows: 4 }} />
-          ) : reviews.length === 0 ? (
+          ) : recentReviewedTasks.length === 0 ? (
             <Empty description="暂无审查记录">
               <Button type="primary" icon={<PlusOutlined size={14} />} onClick={() => navigate('/contracts')}>
                 去审查合同
@@ -89,7 +107,7 @@ export default function DashboardPage() {
             </Empty>
           ) : (
             <List
-              dataSource={reviews.slice(0, 6)}
+              dataSource={recentReviewedTasks.slice(0, 6)}
               renderItem={(r) => (
                 <List.Item
                   style={{ cursor: 'pointer' }}

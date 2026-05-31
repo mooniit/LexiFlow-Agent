@@ -52,6 +52,8 @@ public class ClauseExtractionService {
         addIfPresent(clauses, contract, "TERMINATION", "解除/终止", text, List.of("解除", "终止", "termination"), Map.of(), userId);
         addIfPresent(clauses, contract, "LIABILITY_CAP", "赔偿上限", text, List.of("赔偿上限", "责任上限", "liability cap", "cap"), Map.of(), userId);
         addIfPresent(clauses, contract, "AUTO_RENEWAL", "自动续约", text, List.of("自动续约", "自动延长", "auto renew", "automatic renewal"), Map.of(), userId);
+        addIfPresent(clauses, contract, "ACCEPTANCE", "验收", text, List.of("验收", "交付成果", "验收标准", "acceptance"), Map.of(), userId);
+        addIfPresent(clauses, contract, "NOTICE", "通知", text, List.of("通知", "书面通知", "notice"), Map.of(), userId);
 
         for (ContractClause clause : clauses) {
             clauseMapper.insert(clause);

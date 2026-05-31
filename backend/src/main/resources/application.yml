@@ -62,6 +62,9 @@ lexiflow:
       embedding-dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1536}
   rag:
     similarity-threshold: ${LEXIFLOW_RAG_SIMILARITY_THRESHOLD:0.40}
+  review:
+    payment-term-warning-days: ${LEXIFLOW_REVIEW_PAYMENT_TERM_WARNING_DAYS:60}
+    high-amount-threshold: ${LEXIFLOW_REVIEW_HIGH_AMOUNT_THRESHOLD:1000000}
   storage:
     contracts-dir: ../storage/contracts
     knowledge-dir: ../storage/knowledge

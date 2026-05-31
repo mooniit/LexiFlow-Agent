@@ -100,6 +100,13 @@ export type RetrievalLog = {
   createdAt: string;
 };
 
+export type ReviewEvent = {
+  reviewId: string;
+  type: string;
+  message: string;
+  occurredAt: string;
+};
+
 export type ReviewTrace = {
   review: ContractReview;
   steps: AgentStep[];

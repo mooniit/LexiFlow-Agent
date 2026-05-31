@@ -5,14 +5,26 @@ import type { ClauseRisk } from '../api/review';
 const riskColor: Record<string, string> = { LOW: 'green', MEDIUM: 'orange', HIGH: 'red' };
 const riskLabel: Record<string, string> = { LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险' };
 
-function formatEvidence(evidenceRules?: string): string[] {
-  if (!evidenceRules) return [];
+type EvidenceInfo = {
+  contents: string[];
+  llmEnhanced: boolean;
+  llmProvider?: string;
+  llmModel?: string;
+};
+
+function formatEvidence(evidenceRules?: string): EvidenceInfo {
+  if (!evidenceRules) return { contents: [], llmEnhanced: false };
   try {
     const parsed = JSON.parse(evidenceRules);
     const refs = parsed.references || [];
-    return refs.filter((r: any) => r.content).map((r: any) => r.content);
+    return {
+      contents: refs.filter((r: any) => r.content).map((r: any) => r.content),
+      llmEnhanced: parsed.llmEnhanced === true,
+      llmProvider: parsed.llmProvider,
+      llmModel: parsed.llmModel,
+    };
   } catch {
-    return [];
+    return { contents: [], llmEnhanced: false };
   }
 }
 
@@ -20,14 +32,16 @@ const riskTypeLabels: Record<string, string> = {
   PAYMENT_TERM_TOO_LONG: '付款周期过长',
   UNLIMITED_LIABILITY: '无限责任风险',
   MISSING_DATA_PROTECTION: '缺失数据保护条款',
-  NON_STANDARD_JURISDICTION: '非标准争议解决',
   AUTO_RENEWAL_RISK: '自动续约风险',
   AUTO_RENEWAL_WITHOUT_NOTICE: '自动续约无通知',
   ONE_SIDED_TERMINATION: '单方解除权',
-  CONFIDENTIALITY_WEAK: '保密条款薄弱',
-  IP_OWNERSHIP_UNCLEAR: '知识产权归属不明',
   HIGH_CONTRACT_AMOUNT: '合同金额过高',
   MISSING_TERMINATION_CLAUSE: '缺失终止条款',
+  MISSING_ACCEPTANCE_CLAUSE: '缺失验收条款',
+  ACCEPTANCE_STANDARD_WEAK: '验收标准不清晰',
+  WEAK_CONFIDENTIALITY: '保密条款薄弱',
+  IP_OWNERSHIP_UNCLEAR: '知识产权归属不明',
+  NON_STANDARD_JURISDICTION: '非标准争议解决',
 };
 
 type Props = {
@@ -55,8 +69,15 @@ export default function RiskList({ risks, loading }: Props) {
           <Typography.Paragraph style={{ marginBottom: 4 }}>
             <strong>修改建议：</strong>{r.suggestion}
           </Typography.Paragraph>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
+            <strong>LLM 增强：</strong>
+            {(() => {
+              const evidence = formatEvidence(r.evidenceRules);
+              return evidence.llmEnhanced ? `已参与${evidence.llmProvider ? `（${evidence.llmProvider}${evidence.llmModel ? ` / ${evidence.llmModel}` : ''}）` : ''}` : '未参与或使用规则兜底';
+            })()}
+          </Typography.Paragraph>
           {r.evidenceRules && (() => {
-            const contents = formatEvidence(r.evidenceRules);
+            const { contents } = formatEvidence(r.evidenceRules);
             return contents.length > 0 ? (
               <div style={{ marginTop: 8 }}>
                 <Typography.Text strong style={{ fontSize: 13 }}>引用依据：</Typography.Text>

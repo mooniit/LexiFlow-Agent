@@ -6,10 +6,11 @@ import {
   Space,
   Tag,
   Typography,
+  List,
 } from 'antd';
 import { SearchOutlined, UserOutlined, RobotOutlined, LinkOutlined } from '@ant-design/icons';
 import { useEffect, useRef, useState } from 'react';
-import { searchKnowledge, type RetrievedChunk } from '../../api/knowledge';
+import { askKnowledge, listQaHistory, submitQaFeedback, type QaHistory, type RetrievedChunk } from '../../api/knowledge';
 
 const EXAMPLE_QUESTIONS = [
   '公司对付款周期有什么要求？',
@@ -22,16 +23,19 @@ type Message = {
   role: 'user' | 'assistant';
   content: string;
   chunks?: RetrievedChunk[];
+  historyId?: string;
 };
 
 export default function KnowledgeQAPage() {
   const [question, setQuestion] = useState('');
   const [searching, setSearching] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [history, setHistory] = useState<QaHistory[]>([]);
   const chatRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<any>(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+  useEffect(() => { listQaHistory().then(setHistory).catch(() => setHistory([])); }, []);
 
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' });
@@ -45,13 +49,15 @@ export default function KnowledgeQAPage() {
     setQuestion('');
     setSearching(true);
     try {
-      const chunks = await searchKnowledge(query);
+      const answer = await askKnowledge(query);
       const aiMsg: Message = {
         role: 'assistant',
-        content: chunks.length === 0 ? '未找到相关规则内容，请尝试其他问题或咨询法务部门。' : '',
-        chunks: chunks.length > 0 ? chunks : undefined,
+        content: answer.answer,
+        chunks: answer.references.length > 0 ? answer.references : undefined,
+        historyId: answer.id,
       };
       setMessages((prev) => [...prev, aiMsg]);
+      listQaHistory().then(setHistory).catch(() => undefined);
     } catch {
       const errMsg: Message = { role: 'assistant', content: '检索失败，请稍后重试。' };
       setMessages((prev) => [...prev, errMsg]);
@@ -65,7 +71,8 @@ export default function KnowledgeQAPage() {
       <Typography.Title level={4} style={{ marginBottom: 12 }}>合规知识库问答</Typography.Title>
 
       {/* Chat area */}
-      <div ref={chatRef} style={{ flex: 1, overflowY: 'auto', paddingRight: 4, marginBottom: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 280px', gap: 16, minHeight: 0, flex: 1 }}>
+      <div ref={chatRef} style={{ overflowY: 'auto', paddingRight: 4, marginBottom: 12 }}>
         {messages.length === 0 ? (
           <div style={{ textAlign: 'center', paddingTop: 60 }}>
             <RobotOutlined style={{ fontSize: 48, color: '#b0bec5', marginBottom: 16 }} />
@@ -103,9 +110,16 @@ export default function KnowledgeQAPage() {
               {/* Assistant: chunk cards directly shown */}
               {msg.role === 'assistant' && (
                 <div>
-                  {!msg.chunks ? (
-                    <Typography.Text type="secondary">{msg.content}</Typography.Text>
-                  ) : (
+                  <Typography.Paragraph style={{ whiteSpace: 'pre-wrap', fontSize: 15 }}>
+                    {msg.content}
+                  </Typography.Paragraph>
+                  {msg.historyId && (
+                    <Space style={{ marginBottom: 8 }}>
+                      <Button size="small" onClick={() => submitQaFeedback(msg.historyId!, 'HELPFUL')}>有帮助</Button>
+                      <Button size="small" onClick={() => submitQaFeedback(msg.historyId!, 'NOT_HELPFUL')}>不准确</Button>
+                    </Space>
+                  )}
+                  {msg.chunks && (
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                         <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#e3f2fd', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -144,6 +158,22 @@ export default function KnowledgeQAPage() {
             <Skeleton active paragraph={{ rows: 3 }} />
           </div>
         )}
+      </div>
+      <Card title="问答历史" size="small" style={{ overflow: 'hidden' }}>
+        <List
+          size="small"
+          dataSource={history}
+          locale={{ emptyText: '暂无历史' }}
+          renderItem={(item) => (
+            <List.Item style={{ cursor: 'pointer' }} onClick={() => handleSearch(item.question)}>
+              <List.Item.Meta
+                title={<Typography.Text ellipsis>{item.question}</Typography.Text>}
+                description={<Typography.Text type="secondary" ellipsis>{item.answer}</Typography.Text>}
+              />
+            </List.Item>
+          )}
+        />
+      </Card>
       </div>
 
       {/* Input bar */}

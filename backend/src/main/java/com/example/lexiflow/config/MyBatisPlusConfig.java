@@ -14,7 +14,9 @@ import org.springframework.context.annotation.Configuration;
         "com.example.lexiflow.review.mapper",
         "com.example.lexiflow.rag.mapper",
         "com.example.lexiflow.tool.mapper",
-        "com.example.lexiflow.approval.mapper"
+        "com.example.lexiflow.approval.mapper",
+        "com.example.lexiflow.prompt.mapper",
+        "com.example.lexiflow.llm.mapper"
 })
 public class MyBatisPlusConfig {
 

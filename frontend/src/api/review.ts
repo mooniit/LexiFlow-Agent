@@ -4,9 +4,10 @@ export type ContractReview = {
   id: string;
   contractId: string;
   status: string;
-  overallRisk: string;
-  reportJson: string;
-  failReason: string;
+  overallRiskLevel: string;
+  resultSummary: string;
+  failureReason: string;
+  progressPercent: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -37,6 +38,85 @@ export type ClauseRisk = {
   createdAt: string;
 };
 
+export type ApprovalSummary = {
+  id: string;
+  reviewId: string;
+  approvalType: string;
+  status: string;
+  comment?: string;
+  createdAt: string;
+};
+
+export type ReviewReport = {
+  review: ContractReview;
+  contract: {
+    id: string;
+    contractName: string;
+    contractType?: string;
+    contractAmount?: number;
+    customerName?: string;
+    status: string;
+  };
+  risks: ClauseRisk[];
+  approvals: ApprovalSummary[];
+  summary: string;
+  finalConclusion: string;
+};
+
+export type LlmCallLog = {
+  id: string;
+  provider?: string;
+  modelName?: string;
+  promptVersion?: string;
+  requestBody: string;
+  responseBody: string;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  latencyMs?: number;
+  success: boolean;
+  errorMessage?: string;
+  createdAt: string;
+};
+
+export type ToolCallLog = {
+  id: string;
+  toolName: string;
+  arguments: string;
+  result: string;
+  permissionResult: string;
+  latencyMs?: number;
+  success: boolean;
+  errorMessage?: string;
+  createdAt: string;
+};
+
+export type RetrievalLog = {
+  id: string;
+  queryText: string;
+  filterConditions: string;
+  retrievedChunks: string;
+  latencyMs?: number;
+  createdAt: string;
+};
+
+export type ReviewTrace = {
+  review: ContractReview;
+  steps: AgentStep[];
+  transitions: Array<{ id: string; fromStatus?: string; toStatus: string; reason?: string; createdAt: string }>;
+  llmCalls: LlmCallLog[];
+  toolCalls: ToolCallLog[];
+  retrievalLogs: RetrievalLog[];
+  metrics: {
+    stepCount: number;
+    llmCallCount: number;
+    toolCallCount: number;
+    retrievalCount: number;
+    totalTokens: number;
+    totalLatencyMs: number;
+  };
+};
+
 export function createReview(contractId: string) {
   return api<ContractReview>('/api/reviews', {
     method: 'POST',
@@ -60,6 +140,14 @@ export function getReviewSteps(id: string) {
 
 export function getReviewRisks(id: string) {
   return api<ClauseRisk[]>(`/api/reviews/${id}/risks`);
+}
+
+export function getReviewReport(id: string) {
+  return api<ReviewReport>(`/api/reviews/${id}/report`);
+}
+
+export function getReviewTrace(id: string) {
+  return api<ReviewTrace>(`/api/reviews/${id}/trace`);
 }
 
 export function cancelReview(id: string) {

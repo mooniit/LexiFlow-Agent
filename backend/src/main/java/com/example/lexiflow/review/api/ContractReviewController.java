@@ -70,8 +70,9 @@ public class ContractReviewController {
     }
 
     @GetMapping("/{id}/trace")
-    public ApiResponse<ContractReviewService.ReviewTrace> trace(@PathVariable Long id) {
-        return ApiResponse.ok(reviewService.trace(id));
+    public ApiResponse<ContractReviewService.ReviewTrace> trace(@PathVariable Long id,
+                                                                @AuthenticationPrincipal CurrentUser user) {
+        return ApiResponse.ok(reviewService.trace(id, user));
     }
 
     @PostMapping("/{id}/cancel")

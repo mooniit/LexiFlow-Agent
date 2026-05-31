@@ -40,9 +40,9 @@ export default function ReviewTimeline({ review, steps, sseEvents }: Props) {
           status={review?.status === 'FAILED' ? 'error' : 'process'}
           items={stepItems}
         />
-        {review?.failReason && (
+        {review?.failureReason && (
           <Typography.Paragraph type="danger" style={{ marginTop: 8, fontSize: 13 }}>
-            失败原因：{review.failReason}
+            失败原因：{review.failureReason}
           </Typography.Paragraph>
         )}
       </Card>
@@ -62,7 +62,7 @@ export default function ReviewTimeline({ review, steps, sseEvents }: Props) {
                   <Typography.Text strong>{s.stepType}</Typography.Text>
                   <br />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {s.status} · {s.durationMs}ms
+                    {s.status}
                   </Typography.Text>
                 </>
               ),

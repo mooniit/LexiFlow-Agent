@@ -21,41 +21,34 @@ export default function AgentTracePage() {
 
   useEffect(() => {
     async function load() {
-      if (!reviewId) {
-        setLoading(false);
-        return;
-      }
-      try {
-        setTrace(await getReviewTrace(reviewId));
-      } finally {
-        setLoading(false);
-      }
+      if (!reviewId) { setLoading(false); return; }
+      try { setTrace(await getReviewTrace(reviewId)); } finally { setLoading(false); }
     }
     load();
   }, [reviewId]);
 
   if (loading) return <Spin style={{ display: 'block', marginTop: 80 }} size="large" />;
-  if (!trace) return <Empty description="No Agent Trace found" />;
+  if (!trace) return <Empty description="暂无审查链路数据" />;
 
   return (
     <>
       <Typography.Title level={4} style={{ marginBottom: 16 }}>
-        Agent Trace - Contract #{id}
+        审查链路追踪 — 合同 #{id}
       </Typography.Title>
 
       <section className="metric-grid" style={{ marginBottom: 16 }}>
-        <Card><Statistic title="Steps" value={trace.metrics.stepCount} /></Card>
-        <Card><Statistic title="LLM calls" value={trace.metrics.llmCallCount} /></Card>
-        <Card><Statistic title="Tool calls" value={trace.metrics.toolCallCount} /></Card>
-        <Card><Statistic title="RAG searches" value={trace.metrics.retrievalCount} /></Card>
+        <Card><Statistic title="执行步骤" value={trace.metrics.stepCount} /></Card>
+        <Card><Statistic title="LLM 调用" value={trace.metrics.llmCallCount} /></Card>
+        <Card><Statistic title="工具调用" value={trace.metrics.toolCallCount} /></Card>
+        <Card><Statistic title="RAG 检索" value={trace.metrics.retrievalCount} /></Card>
       </section>
 
       <Card style={{ marginBottom: 16 }}>
         <Descriptions column={4} size="small">
-          <Descriptions.Item label="Review ID">{trace.review.id}</Descriptions.Item>
-          <Descriptions.Item label="Status"><Tag>{trace.review.status}</Tag></Descriptions.Item>
-          <Descriptions.Item label="Total tokens">{trace.metrics.totalTokens}</Descriptions.Item>
-          <Descriptions.Item label="Latency">{trace.metrics.totalLatencyMs}ms</Descriptions.Item>
+          <Descriptions.Item label="审查 ID">{trace.review.id}</Descriptions.Item>
+          <Descriptions.Item label="状态"><Tag>{trace.review.status}</Tag></Descriptions.Item>
+          <Descriptions.Item label="Token 消耗">{trace.metrics.totalTokens}</Descriptions.Item>
+          <Descriptions.Item label="总耗时">{trace.metrics.totalLatencyMs}ms</Descriptions.Item>
         </Descriptions>
       </Card>
 
@@ -63,8 +56,8 @@ export default function AgentTracePage() {
         items={[
           {
             key: 'steps',
-            label: 'Steps',
-            children: trace.steps.length === 0 ? <Empty description="No step records" /> : (
+            label: '执行步骤',
+            children: trace.steps.length === 0 ? <Empty description="暂无步骤记录" /> : (
               <Timeline
                 items={trace.steps.map((step) => ({
                   color: step.status === 'COMPLETED' ? 'green' : step.status === 'FAILED' ? 'red' : 'blue',
@@ -81,29 +74,29 @@ export default function AgentTracePage() {
           },
           {
             key: 'transitions',
-            label: 'State transitions',
-            children: trace.transitions.length === 0 ? <Empty description="No state transitions" /> : (
+            label: '状态流转',
+            children: trace.transitions.length === 0 ? <Empty description="暂无状态流转" /> : (
               <Timeline
-                items={trace.transitions.map((transition) => ({
-                  children: `${transition.fromStatus || 'START'} -> ${transition.toStatus}: ${transition.reason || '-'}`,
+                items={trace.transitions.map((t) => ({
+                  children: `${t.fromStatus || 'START'} → ${t.toStatus}: ${t.reason || '-'}`,
                 }))}
               />
             ),
           },
           {
             key: 'llm',
-            label: 'LLM logs',
-            children: trace.llmCalls.length === 0 ? <Empty description="No LLM logs" /> : (
+            label: 'LLM 日志',
+            children: trace.llmCalls.length === 0 ? <Empty description="暂无 LLM 日志" /> : (
               <List
                 dataSource={trace.llmCalls}
                 renderItem={(log) => (
                   <List.Item>
                     <Card size="small" style={{ width: '100%' }}>
                       <Descriptions column={4} size="small">
-                        <Descriptions.Item label="Provider">{log.provider || '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Model">{log.modelName || '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Prompt">{log.promptVersion || '-'}</Descriptions.Item>
-                        <Descriptions.Item label="Tokens">{log.totalTokens || 0}</Descriptions.Item>
+                        <Descriptions.Item label="供应商">{log.provider || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="模型">{log.modelName || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="模板">{log.promptVersion || '-'}</Descriptions.Item>
+                        <Descriptions.Item label="Token">{log.totalTokens || 0}</Descriptions.Item>
                       </Descriptions>
                       <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{prettyJson(log.responseBody)}</pre>
                     </Card>
@@ -114,15 +107,15 @@ export default function AgentTracePage() {
           },
           {
             key: 'tools',
-            label: 'Tool logs',
-            children: trace.toolCalls.length === 0 ? <Empty description="No tool logs" /> : (
+            label: '工具日志',
+            children: trace.toolCalls.length === 0 ? <Empty description="暂无工具日志" /> : (
               <List
                 dataSource={trace.toolCalls}
                 renderItem={(log) => (
                   <List.Item>
                     <Card size="small" style={{ width: '100%' }}>
                       <Typography.Text strong>{log.toolName}</Typography.Text>
-                      <Tag color={log.success ? 'green' : 'red'} style={{ marginLeft: 8 }}>{log.success ? 'SUCCESS' : 'FAILED'}</Tag>
+                      <Tag color={log.success ? 'green' : 'red'} style={{ marginLeft: 8 }}>{log.success ? '成功' : '失败'}</Tag>
                       <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{prettyJson(log.result)}</pre>
                     </Card>
                   </List.Item>
@@ -132,8 +125,8 @@ export default function AgentTracePage() {
           },
           {
             key: 'rag',
-            label: 'RAG logs',
-            children: trace.retrievalLogs.length === 0 ? <Empty description="No RAG logs" /> : (
+            label: 'RAG 日志',
+            children: trace.retrievalLogs.length === 0 ? <Empty description="暂无 RAG 日志" /> : (
               <List
                 dataSource={trace.retrievalLogs}
                 renderItem={(log) => (

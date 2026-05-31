@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getContract, getOriginalText, type Contract } from '../../api/contract';
 import {
+  createReview,
   getReview,
   getReviewRisks,
   getReviewSteps,
@@ -105,21 +106,32 @@ export default function ContractReviewPage() {
               {review.status}
             </Tag>
           )}
-          {review?.status === 'COMPLETED' && (
+          {review ? (
+            <>
+              {review.status === 'COMPLETED' && (
+                <Button type="primary" icon={<FileTextOutlined />} onClick={() => navigate(`/contracts/${contractId}/report?reviewId=${review.id}`)}>
+                  查看报告
+                </Button>
+              )}
+              <Button icon={<BranchesOutlined />} onClick={() => navigate(`/contracts/${contractId}/trace?reviewId=${review.id}`)}>
+                审查链路
+              </Button>
+            </>
+          ) : (
             <Button
               type="primary"
-              icon={<FileTextOutlined />}
-              onClick={() => navigate(`/contracts/${contractId}/report?reviewId=${review.id}`)}
-            >
-              查看报告
-            </Button>
-          )}
-          {review && (
-            <Button
               icon={<BranchesOutlined />}
-              onClick={() => navigate(`/contracts/${contractId}/trace?reviewId=${review.id}`)}
+              onClick={async () => {
+                try {
+                  const r = await createReview(contractId);
+                  navigate(`/contracts/${contractId}?reviewId=${r.id}`, { replace: true });
+                  window.location.reload();
+                } catch (err: any) {
+                  // ignore
+                }
+              }}
             >
-              Trace
+              发起审查
             </Button>
           )}
         </div>

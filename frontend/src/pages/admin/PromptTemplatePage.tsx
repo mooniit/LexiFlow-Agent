@@ -10,14 +10,14 @@ import {
   type PromptTemplatePayload,
 } from '../../api/prompt';
 
-const scenes = [
-  'CLAUSE_EXTRACTION',
-  'RISK_ANALYSIS',
-  'RULE_EXPLANATION',
-  'SUGGESTION_GENERATION',
-  'REPORT_GENERATION',
-  'KNOWLEDGE_QA',
-];
+const SCENE_LABELS: Record<string, string> = {
+  CLAUSE_EXTRACTION: '条款抽取',
+  RISK_ANALYSIS: '风险分析',
+  RULE_EXPLANATION: '规则解释',
+  SUGGESTION_GENERATION: '修改建议',
+  REPORT_GENERATION: '报告生成',
+  KNOWLEDGE_QA: '知识库问答',
+};
 
 export default function PromptTemplatePage() {
   const [items, setItems] = useState<PromptTemplate[]>([]);
@@ -60,10 +60,10 @@ export default function PromptTemplatePage() {
     const values = await form.validateFields();
     if (editing) {
       await updatePrompt(editing.id, values);
-      message.success('Prompt 模板已更新');
+      message.success('模板已更新');
     } else {
       await createPrompt(values);
-      message.success('Prompt 模板已创建');
+      message.success('模板已创建');
     }
     setOpen(false);
     load();
@@ -71,7 +71,7 @@ export default function PromptTemplatePage() {
 
   async function remove(id: string) {
     await deletePrompt(id);
-    message.success('Prompt 模板已删除');
+    message.success('模板已删除');
     load();
   }
 
@@ -91,7 +91,7 @@ export default function PromptTemplatePage() {
           columns={[
             { title: '名称', dataIndex: 'name' },
             { title: '版本', dataIndex: 'version', width: 100 },
-            { title: '场景', dataIndex: 'scene', render: (v) => <Tag>{v}</Tag> },
+            { title: '场景', dataIndex: 'scene', render: (v: string) => <Tag>{SCENE_LABELS[v] || v}</Tag> },
             { title: '状态', dataIndex: 'enabled', width: 90, render: (v) => <Tag color={v ? 'green' : 'default'}>{v ? '启用' : '停用'}</Tag> },
             { title: '说明', dataIndex: 'description', ellipsis: true },
             {
@@ -108,7 +108,7 @@ export default function PromptTemplatePage() {
         />
       </Card>
 
-      <Modal open={open} title={editing ? '编辑 Prompt 模板' : '新建 Prompt 模板'} onCancel={() => setOpen(false)} onOk={submit} width={760}>
+      <Modal open={open} title={editing ? '编辑模板' : '新建模板'} onCancel={() => setOpen(false)} onOk={submit} width={760}>
         <Form form={form} layout="vertical">
           <Space style={{ width: '100%' }} align="start">
             <Form.Item name="name" label="名称" rules={[{ required: true }]} style={{ width: 230 }}>
@@ -118,7 +118,7 @@ export default function PromptTemplatePage() {
               <Input />
             </Form.Item>
             <Form.Item name="scene" label="场景" rules={[{ required: true }]} style={{ width: 220 }}>
-              <Select options={scenes.map((scene) => ({ label: scene, value: scene }))} />
+              <Select options={Object.entries(SCENE_LABELS).map(([k, v]) => ({ label: v, value: k }))} />
             </Form.Item>
             <Form.Item name="enabled" label="启用" valuePropName="checked">
               <Switch />

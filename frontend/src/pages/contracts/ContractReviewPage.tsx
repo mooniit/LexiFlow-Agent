@@ -1,5 +1,5 @@
 import { Button, Card, Descriptions, Empty, Skeleton, Tag, Typography } from 'antd';
-import { FileTextOutlined, NodeIndexOutlined } from '@ant-design/icons';
+import { BranchesOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getContract, getOriginalText, type Contract } from '../../api/contract';
@@ -116,10 +116,10 @@ export default function ContractReviewPage() {
           )}
           {review && (
             <Button
-              icon={<NodeIndexOutlined />}
+              icon={<BranchesOutlined />}
               onClick={() => navigate(`/contracts/${contractId}/trace?reviewId=${review.id}`)}
             >
-              审查链路
+              Trace
             </Button>
           )}
         </div>

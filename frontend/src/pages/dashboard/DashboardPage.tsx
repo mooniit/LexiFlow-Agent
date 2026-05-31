@@ -25,7 +25,7 @@ export default function DashboardPage() {
   useEffect(() => { load(); }, []);
 
   const pendingReviews = reviews.filter((r) => r.status === 'WAITING_APPROVAL').length;
-  const highRiskCount = reviews.filter((r) => r.overallRisk === 'HIGH').length;
+  const highRiskCount = reviews.filter((r) => r.overallRiskLevel === 'HIGH').length;
 
   const contractNames = useMemo(() => {
     const map: Record<string, string> = {};

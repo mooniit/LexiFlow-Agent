@@ -3,6 +3,7 @@ package com.example.lexiflow.review.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.lexiflow.approval.service.ApprovalService;
 import com.example.lexiflow.approval.service.ApprovalEventMessage;
+import com.example.lexiflow.approval.model.ApprovalRequest;
 import com.example.lexiflow.agent.model.AgentStepType;
 import com.example.lexiflow.agent.model.AgentTaskStatus;
 import com.example.lexiflow.agent.service.AgentStateMachine;
@@ -11,6 +12,10 @@ import com.example.lexiflow.contract.model.Contract;
 import com.example.lexiflow.contract.model.ContractStatus;
 import com.example.lexiflow.contract.service.ClauseExtractionService;
 import com.example.lexiflow.contract.service.ContractService;
+import com.example.lexiflow.llm.mapper.LlmCallLogMapper;
+import com.example.lexiflow.llm.model.LlmCallLog;
+import com.example.lexiflow.rag.mapper.RetrievalLogMapper;
+import com.example.lexiflow.rag.model.RetrievalLog;
 import com.example.lexiflow.rag.service.RagRetrievalService;
 import com.example.lexiflow.rag.service.RagRetrievalService.RetrievedChunk;
 import com.example.lexiflow.review.mapper.AgentStateTransitionLogMapper;
@@ -21,6 +26,8 @@ import com.example.lexiflow.review.model.AgentStep;
 import com.example.lexiflow.review.model.ClauseRisk;
 import com.example.lexiflow.review.model.ContractReview;
 import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.tool.mapper.ToolCallLogMapper;
+import com.example.lexiflow.tool.model.ToolCallLog;
 import com.example.lexiflow.user.mapper.AppUserMapper;
 import com.example.lexiflow.user.mapper.UserPermissionMapper;
 import com.example.lexiflow.user.model.AppUser;
@@ -47,6 +54,9 @@ public class ContractReviewService {
     private final AppUserMapper userMapper;
     private final UserPermissionMapper userPermissionMapper;
     private final ApprovalService approvalService;
+    private final LlmCallLogMapper llmCallLogMapper;
+    private final ToolCallLogMapper toolCallLogMapper;
+    private final RetrievalLogMapper retrievalLogMapper;
 
     public ContractReviewService(ContractReviewMapper reviewMapper, AgentStepMapper stepMapper,
                                  AgentStateTransitionLogMapper transitionLogMapper, ContractService contractService,
@@ -54,7 +64,8 @@ public class ContractReviewService {
                                  RiskAnalysisService riskAnalysisService, AgentStateMachine stateMachine,
                                  ReviewEventBus eventBus, ReviewJobPublisher reviewJobPublisher,
                                  AppUserMapper userMapper, UserPermissionMapper userPermissionMapper,
-                                 ApprovalService approvalService) {
+                                 ApprovalService approvalService, LlmCallLogMapper llmCallLogMapper,
+                                 ToolCallLogMapper toolCallLogMapper, RetrievalLogMapper retrievalLogMapper) {
         this.reviewMapper = reviewMapper;
         this.stepMapper = stepMapper;
         this.transitionLogMapper = transitionLogMapper;
@@ -68,6 +79,9 @@ public class ContractReviewService {
         this.userMapper = userMapper;
         this.userPermissionMapper = userPermissionMapper;
         this.approvalService = approvalService;
+        this.llmCallLogMapper = llmCallLogMapper;
+        this.toolCallLogMapper = toolCallLogMapper;
+        this.retrievalLogMapper = retrievalLogMapper;
     }
 
     @Transactional
@@ -268,18 +282,43 @@ public class ContractReviewService {
 
     public ReviewReport report(Long reviewId) {
         ContractReview review = requireById(reviewId);
+        Contract contract = contractService.requireById(review.getContractId());
         List<ClauseRisk> risks = riskAnalysisService.listByReview(reviewId);
-        return new ReviewReport(review, risks, review.getResultSummary());
+        List<ApprovalRequest> approvals = approvalService.list(null, reviewId);
+        return new ReviewReport(review, contract, risks, approvals, review.getResultSummary(), finalConclusion(review, risks));
     }
 
-    public ReviewTrace trace(Long reviewId) {
+    public ReviewTrace trace(Long reviewId, CurrentUser user) {
+        if (user == null || !user.permissions().contains("trace:read")) {
+            throw new IllegalArgumentException("trace:read permission is required.");
+        }
         ContractReview review = requireById(reviewId);
         List<AgentStep> steps = steps(reviewId);
         List<AgentStateTransitionLog> transitions = transitionLogMapper.selectList(
                 new LambdaQueryWrapper<AgentStateTransitionLog>()
                         .eq(AgentStateTransitionLog::getReviewId, reviewId)
                         .orderByAsc(AgentStateTransitionLog::getCreatedAt));
-        return new ReviewTrace(review, steps, transitions);
+        List<LlmCallLog> llmCalls = llmCallLogMapper.selectList(new LambdaQueryWrapper<LlmCallLog>()
+                .eq(LlmCallLog::getReviewId, reviewId)
+                .orderByAsc(LlmCallLog::getCreatedAt));
+        List<ToolCallLog> toolCalls = toolCallLogMapper.selectList(new LambdaQueryWrapper<ToolCallLog>()
+                .eq(ToolCallLog::getReviewId, reviewId)
+                .orderByAsc(ToolCallLog::getCreatedAt));
+        List<RetrievalLog> retrievalLogs = retrievalLogMapper.selectList(new LambdaQueryWrapper<RetrievalLog>()
+                .eq(RetrievalLog::getReviewId, reviewId)
+                .orderByAsc(RetrievalLog::getCreatedAt));
+        long totalLatencyMs = steps.stream()
+                .mapToLong(step -> step.getStartedAt() != null && step.getFinishedAt() != null
+                        ? java.time.Duration.between(step.getStartedAt(), step.getFinishedAt()).toMillis()
+                        : 0)
+                .sum();
+        int totalTokens = llmCalls.stream()
+                .map(LlmCallLog::getTotalTokens)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .sum();
+        return new ReviewTrace(review, steps, transitions, llmCalls, toolCalls, retrievalLogs,
+                new TraceMetrics(steps.size(), llmCalls.size(), toolCalls.size(), retrievalLogs.size(), totalTokens, totalLatencyMs));
     }
 
     private void generateReport(ContractReview review, int clauseCount, List<ClauseRisk> risks, CurrentUser user,
@@ -306,10 +345,33 @@ public class ContractReviewService {
                 : risks.stream().anyMatch(risk -> "MEDIUM".equals(risk.getRiskLevel())) ? "MEDIUM" : "LOW";
     }
 
-    public record ReviewReport(ContractReview review, List<ClauseRisk> risks, String summary) {
+    private String finalConclusion(ContractReview review, List<ClauseRisk> risks) {
+        if (AgentTaskStatus.FAILED.name().equals(review.getStatus())) {
+            return review.getFailureReason();
+        }
+        if (!AgentTaskStatus.COMPLETED.name().equals(review.getStatus())) {
+            return "审查任务尚未完成，报告仍在生成或等待处理。";
+        }
+        if (risks.stream().anyMatch(risk -> "HIGH".equals(risk.getRiskLevel()))) {
+            return "审查发现高风险条款，建议完成法务复核和合同修改后再签署。";
+        }
+        if (risks.stream().anyMatch(risk -> "MEDIUM".equals(risk.getRiskLevel()))) {
+            return "审查发现中等风险条款，建议业务经办人与法务确认修改方案。";
+        }
+        return "审查未发现重大风险，可按内部流程继续推进。";
     }
 
-    public record ReviewTrace(ContractReview review, List<AgentStep> steps, List<AgentStateTransitionLog> transitions) {
+    public record ReviewReport(ContractReview review, Contract contract, List<ClauseRisk> risks,
+                               List<ApprovalRequest> approvals, String summary, String finalConclusion) {
+    }
+
+    public record ReviewTrace(ContractReview review, List<AgentStep> steps, List<AgentStateTransitionLog> transitions,
+                              List<LlmCallLog> llmCalls, List<ToolCallLog> toolCalls,
+                              List<RetrievalLog> retrievalLogs, TraceMetrics metrics) {
+    }
+
+    public record TraceMetrics(int stepCount, int llmCallCount, int toolCallCount, int retrievalCount,
+                               int totalTokens, long totalLatencyMs) {
     }
 
     private void fail(ContractReview review, String reason, Long userId) {

@@ -38,6 +38,24 @@ export type RetrievedChunk = {
   score: number;
 };
 
+export type QaAnswer = {
+  id: string;
+  question: string;
+  answer: string;
+  references: RetrievedChunk[];
+  createdAt: string;
+};
+
+export type QaHistory = {
+  id: string;
+  question: string;
+  answer: string;
+  referencesJson: string;
+  retrievedChunks: string;
+  feedback?: string;
+  createdAt: string;
+};
+
 export function createKnowledgeBase(name: string, visibility?: string) {
   return api<KnowledgeBase>('/api/knowledge-bases', {
     method: 'POST',
@@ -75,6 +93,26 @@ export function searchKnowledge(query: string, reviewId?: string, limit?: number
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ reviewId: reviewId || null, query, limit: limit || 5 }),
+  });
+}
+
+export function askKnowledge(question: string, knowledgeBaseId?: string, limit?: number) {
+  return api<QaAnswer>('/api/knowledge-qa/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, knowledgeBaseId: knowledgeBaseId || null, limit: limit || 5 }),
+  });
+}
+
+export function listQaHistory() {
+  return api<QaHistory[]>('/api/knowledge-qa/history');
+}
+
+export function submitQaFeedback(id: string, feedback: 'HELPFUL' | 'NOT_HELPFUL') {
+  return api<QaHistory>(`/api/knowledge-qa/history/${id}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ feedback }),
   });
 }
 

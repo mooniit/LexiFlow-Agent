@@ -15,7 +15,10 @@ import com.example.lexiflow.rag.model.KnowledgeBase;
 import com.example.lexiflow.rag.model.KnowledgeDocument;
 import com.example.lexiflow.rag.model.RetrievalLog;
 import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.tool.mapper.ToolCallLogMapper;
+import com.example.lexiflow.tool.model.ToolCallLog;
 import com.example.lexiflow.tool.service.ToolPermissionGuard;
+import com.example.lexiflow.tool.service.ToolPermissionDeniedException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashSet;
@@ -36,13 +39,14 @@ public class RagRetrievalService {
     private final RetrievalLogMapper retrievalLogMapper;
     private final KnowledgeAccessGuard knowledgeAccessGuard;
     private final ToolPermissionGuard toolPermissionGuard;
+    private final ToolCallLogMapper toolCallLogMapper;
     private final LlmGateway llmGateway;
     private final double similarityThreshold;
 
     public RagRetrievalService(DocumentChunkMapper chunkMapper, KnowledgeDocumentMapper documentMapper,
                                KnowledgeBaseMapper knowledgeBaseMapper, RetrievalLogMapper retrievalLogMapper,
                                KnowledgeAccessGuard knowledgeAccessGuard, ToolPermissionGuard toolPermissionGuard,
-                               LlmGateway llmGateway,
+                               ToolCallLogMapper toolCallLogMapper, LlmGateway llmGateway,
                                @Value("${lexiflow.rag.similarity-threshold:0.40}") double similarityThreshold) {
         this.chunkMapper = chunkMapper;
         this.documentMapper = documentMapper;
@@ -50,17 +54,30 @@ public class RagRetrievalService {
         this.retrievalLogMapper = retrievalLogMapper;
         this.knowledgeAccessGuard = knowledgeAccessGuard;
         this.toolPermissionGuard = toolPermissionGuard;
+        this.toolCallLogMapper = toolCallLogMapper;
         this.llmGateway = llmGateway;
         this.similarityThreshold = similarityThreshold;
     }
 
     public List<RetrievedChunk> retrieve(Long reviewId, String query, int limit, CurrentUser user) {
-        toolPermissionGuard.requireAllowed("rule_retrieval", user);
-        Instant start = Instant.now();
+        return retrieve(reviewId, query, limit, null, user);
+    }
 
-        AccessScope scope = accessScope(user);
+    public List<RetrievedChunk> retrieve(Long reviewId, String query, int limit, Long knowledgeBaseId, CurrentUser user) {
+        Instant start = Instant.now();
+        try {
+            toolPermissionGuard.requireAllowed("rule_retrieval", user);
+        } catch (ToolPermissionDeniedException ex) {
+            logToolCall(reviewId, query, limit, knowledgeBaseId, List.of(), Duration.between(start, Instant.now()).toMillis(),
+                    false, ex.getMessage(), user.id());
+            throw ex;
+        }
+
+        AccessScope scope = accessScope(user, knowledgeBaseId);
         if (scope.documentIds().isEmpty()) {
             log(reviewId, query, scope, null, List.of(), Duration.between(start, Instant.now()).toMillis(), user.id());
+            logToolCall(reviewId, query, limit, knowledgeBaseId, List.of(), Duration.between(start, Instant.now()).toMillis(),
+                    true, null, user.id());
             return List.of();
         }
 
@@ -86,6 +103,8 @@ public class RagRetrievalService {
                 .toList();
 
         log(reviewId, query, scope, queryEmbedding, results, Duration.between(start, Instant.now()).toMillis(), user.id());
+        logToolCall(reviewId, query, limit, knowledgeBaseId, results, Duration.between(start, Instant.now()).toMillis(),
+                true, null, user.id());
         return results;
     }
 
@@ -107,10 +126,14 @@ public class RagRetrievalService {
         return new QueryEmbedding(sb.toString(), response.provider(), response.model(), vector.size());
     }
 
-    private AccessScope accessScope(CurrentUser user) {
-        List<KnowledgeBase> bases = knowledgeBaseMapper.selectList(new LambdaQueryWrapper<KnowledgeBase>()
+    private AccessScope accessScope(CurrentUser user, Long knowledgeBaseId) {
+        LambdaQueryWrapper<KnowledgeBase> baseQuery = new LambdaQueryWrapper<KnowledgeBase>()
                 .eq(KnowledgeBase::getDeleted, false)
-                .eq(KnowledgeBase::getStatus, "ACTIVE"));
+                .eq(KnowledgeBase::getStatus, "ACTIVE");
+        if (knowledgeBaseId != null) {
+            baseQuery.eq(KnowledgeBase::getId, knowledgeBaseId);
+        }
+        List<KnowledgeBase> bases = knowledgeBaseMapper.selectList(baseQuery);
         Set<Long> baseIds = bases.stream()
                 .filter(base -> knowledgeAccessGuard.canRead(base, user))
                 .map(KnowledgeBase::getId)
@@ -144,6 +167,24 @@ public class RagRetrievalService {
         log.setLatencyMs(latencyMs);
         log.setCreatedBy(userId);
         retrievalLogMapper.insert(log);
+    }
+
+    private void logToolCall(Long reviewId, String query, int limit, Long knowledgeBaseId,
+                             List<RetrievedChunk> results, long latencyMs, boolean success,
+                             String errorMessage, Long userId) {
+        ToolCallLog log = new ToolCallLog();
+        log.setReviewId(reviewId);
+        log.setToolName("rule_retrieval");
+        log.setArguments("{\"query\":" + JsonStrings.quote(query)
+                + ",\"limit\":" + limit
+                + ",\"knowledgeBaseId\":" + (knowledgeBaseId == null ? "null" : knowledgeBaseId) + "}");
+        log.setResult("{\"matchedRules\":" + results.size() + "}");
+        log.setPermissionResult("{\"allowed\":" + success + "}");
+        log.setLatencyMs(latencyMs);
+        log.setSuccess(success);
+        log.setErrorMessage(errorMessage);
+        log.setCreatedBy(userId);
+        toolCallLogMapper.insert(log);
     }
 
     private String toJson(List<RetrievedChunk> chunks) {

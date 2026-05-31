@@ -4,7 +4,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clearToken } from '../api/client';
 import { fetchMe, type UserProfile } from '../api/auth';
 import { useEffect, useState } from 'react';
-import { Activity, FileText, FileUp, Search, CheckCircle, Settings, Users, Gauge, BookOpen } from 'lucide-react';
+import { Activity, FileText, FileUp, Search, CheckCircle, Settings, Users, Gauge, BookOpen, MessageSquareText } from 'lucide-react';
 
 const { Header, Sider, Content } = Layout;
 
@@ -36,6 +36,7 @@ export default function AppLayout() {
     { to: '/knowledge/manage', icon: <BookOpen size={17} />, label: '规则库管理' },
     { to: '/admin/users', icon: <Users size={17} />, label: '用户权限' },
     { to: '/admin/tools', icon: <Settings size={17} />, label: '工具配置' },
+    { to: '/admin/prompts', icon: <MessageSquareText size={17} />, label: 'Prompt 模板' },
     { to: '/admin/observability', icon: <Gauge size={17} />, label: '系统观测' },
   ];
 

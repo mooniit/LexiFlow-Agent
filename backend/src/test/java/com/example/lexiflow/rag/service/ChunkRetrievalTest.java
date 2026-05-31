@@ -12,6 +12,7 @@ import com.example.lexiflow.rag.model.KnowledgeBase;
 import com.example.lexiflow.rag.model.KnowledgeDocument;
 import com.example.lexiflow.rag.model.RetrievalLog;
 import com.example.lexiflow.security.CurrentUser;
+import com.example.lexiflow.tool.mapper.ToolCallLogMapper;
 import com.example.lexiflow.tool.service.ToolPermissionGuard;
 import java.util.List;
 import org.assertj.core.api.Assertions;
@@ -46,6 +47,8 @@ class ChunkRetrievalTest {
     @Mock
     private ToolPermissionGuard toolPermissionGuard;
     @Mock
+    private ToolCallLogMapper toolCallLogMapper;
+    @Mock
     private LlmGateway llmGateway;
 
     private RagRetrievalService service;
@@ -53,7 +56,7 @@ class ChunkRetrievalTest {
     @BeforeEach
     void setUp() {
         service = new RagRetrievalService(chunkMapper, documentMapper, knowledgeBaseMapper,
-                retrievalLogMapper, knowledgeAccessGuard, toolPermissionGuard, llmGateway, 0.40);
+                retrievalLogMapper, knowledgeAccessGuard, toolPermissionGuard, toolCallLogMapper, llmGateway, 0.40);
     }
 
     // === retrieval main path ===

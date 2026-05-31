@@ -24,9 +24,8 @@ export default function DashboardPage() {
 
   useEffect(() => { load(); }, []);
 
-  const activeReviews = reviews.filter((r) => r.status !== 'CANCELLED');
-  const pendingReviews = activeReviews.filter((r) => r.status === 'WAITING_APPROVAL').length;
-  const highRiskCount = activeReviews.filter((r) => r.overallRiskLevel === 'HIGH').length;
+  const pendingReviews = reviews.filter((r) => r.status === 'WAITING_APPROVAL').length;
+  const highRiskCount = reviews.filter((r) => r.overallRiskLevel === 'HIGH').length;
 
   const contractNames = useMemo(() => {
     const map: Record<string, string> = {};
@@ -64,7 +63,7 @@ export default function DashboardPage() {
       <section className="metric-grid">
         <Card className="stat-total">
           {loading ? <Skeleton active paragraph={{ rows: 1 }} /> :
-            <Statistic title="审查任务" value={activeReviews.length} prefix={<FileText size={18} />} />
+            <Statistic title="审查任务" value={reviews.length} prefix={<FileText size={18} />} />
           }
         </Card>
         <Card className="stat-pending">
@@ -90,7 +89,7 @@ export default function DashboardPage() {
             </Empty>
           ) : (
             <List
-              dataSource={activeReviews.slice(0, 6)}
+              dataSource={reviews.slice(0, 6)}
               renderItem={(r) => (
                 <List.Item
                   style={{ cursor: 'pointer' }}

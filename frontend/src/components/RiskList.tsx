@@ -5,6 +5,17 @@ import type { ClauseRisk } from '../api/review';
 const riskColor: Record<string, string> = { LOW: 'green', MEDIUM: 'orange', HIGH: 'red' };
 const riskLabel: Record<string, string> = { LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险' };
 
+function formatEvidence(evidenceRules?: string): string[] {
+  if (!evidenceRules) return [];
+  try {
+    const parsed = JSON.parse(evidenceRules);
+    const refs = parsed.references || [];
+    return refs.filter((r: any) => r.content).map((r: any) => r.content);
+  } catch {
+    return [];
+  }
+}
+
 const riskTypeLabels: Record<string, string> = {
   PAYMENT_TERM_TOO_LONG: '付款周期过长',
   UNLIMITED_LIABILITY: '无限责任风险',
@@ -44,11 +55,19 @@ export default function RiskList({ risks, loading }: Props) {
           <Typography.Paragraph style={{ marginBottom: 4 }}>
             <strong>修改建议：</strong>{r.suggestion}
           </Typography.Paragraph>
-          {r.evidenceRules && (
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              <strong>引用依据：</strong>{r.evidenceRules}
-            </Typography.Text>
-          )}
+          {r.evidenceRules && (() => {
+            const contents = formatEvidence(r.evidenceRules);
+            return contents.length > 0 ? (
+              <div style={{ marginTop: 8 }}>
+                <Typography.Text strong style={{ fontSize: 13 }}>引用依据：</Typography.Text>
+                {contents.map((c, i) => (
+                  <Typography.Paragraph key={i} type="secondary" style={{ fontSize: 13, marginBottom: 4, whiteSpace: 'pre-wrap', borderLeft: '2px solid #d9d9d9', paddingLeft: 10 }}>
+                    {c}
+                  </Typography.Paragraph>
+                ))}
+              </div>
+            ) : null;
+          })()}
         </Card>
       ))}
     </>

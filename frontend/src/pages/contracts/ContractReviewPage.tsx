@@ -8,6 +8,7 @@ import {
   getReview,
   getReviewRisks,
   getReviewSteps,
+  listReviews,
   subscribeReviewEvents,
   type ContractReview,
   type AgentStep,
@@ -49,8 +50,15 @@ export default function ContractReviewPage() {
         const c = await getContract(contractId);
         setContract(c);
         getOriginalText(contractId).then((r) => setOriginalText(r.text)).catch(() => setOriginalText('（无法加载原文）'));
+
         if (initialReviewId) {
           await refreshReviewData(initialReviewId);
+        } else {
+          const existing = await listReviews(contractId);
+          const latest = existing.filter((r) => r.status !== 'CANCELLED').sort((a, b) => Number(b.id) - Number(a.id))[0];
+          if (latest) {
+            await refreshReviewData(latest.id);
+          }
         }
       } catch { /* handled */ } finally {
         setLoading(false);

@@ -3,7 +3,21 @@ import { AlertOutlined } from '@ant-design/icons';
 import type { ClauseRisk } from '../api/review';
 
 const riskColor: Record<string, string> = { LOW: 'green', MEDIUM: 'orange', HIGH: 'red' };
-const riskLabel: Record<string, string> = { LOW: '低', MEDIUM: '中', HIGH: '高' };
+const riskLabel: Record<string, string> = { LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险' };
+
+const riskTypeLabels: Record<string, string> = {
+  PAYMENT_TERM_TOO_LONG: '付款周期过长',
+  UNLIMITED_LIABILITY: '无限责任风险',
+  MISSING_DATA_PROTECTION: '缺失数据保护条款',
+  NON_STANDARD_JURISDICTION: '非标准争议解决',
+  AUTO_RENEWAL_RISK: '自动续约风险',
+  AUTO_RENEWAL_WITHOUT_NOTICE: '自动续约无通知',
+  ONE_SIDED_TERMINATION: '单方解除权',
+  CONFIDENTIALITY_WEAK: '保密条款薄弱',
+  IP_OWNERSHIP_UNCLEAR: '知识产权归属不明',
+  HIGH_CONTRACT_AMOUNT: '合同金额过高',
+  MISSING_TERMINATION_CLAUSE: '缺失终止条款',
+};
 
 type Props = {
   risks: ClauseRisk[];
@@ -21,7 +35,7 @@ export default function RiskList({ risks, loading }: Props) {
         <Card key={r.id} size="small" className={`risk-card risk-card-${r.riskLevel.toLowerCase()}`} style={{ marginBottom: 12 }} bordered loading={loading}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <Tag color={riskColor[r.riskLevel] || 'default'}>{riskLabel[r.riskLevel] || r.riskLevel}</Tag>
-            <Typography.Text strong>{r.clauseName || r.riskType}</Typography.Text>
+            <Typography.Text strong>{r.clauseName || riskTypeLabels[r.riskType] || r.riskType}</Typography.Text>
             {r.requiresApproval && <Tag color="red" icon={<AlertOutlined />}>需审批</Tag>}
           </div>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>

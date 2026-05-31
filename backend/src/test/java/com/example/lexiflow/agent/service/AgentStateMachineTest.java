@@ -1,5 +1,6 @@
 package com.example.lexiflow.agent.service;
 
+import com.example.lexiflow.agent.model.AgentTaskStatus;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.ANALYZING;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.CANCELLED;
 import static com.example.lexiflow.agent.model.AgentTaskStatus.COMPLETED;
@@ -51,5 +52,35 @@ class AgentStateMachineTest {
         Assertions.assertThat(stateMachine.canTransit(CREATED, CANCELLED)).isTrue();
         Assertions.assertThat(stateMachine.canTransit(ANALYZING, CANCELLED)).isTrue();
         Assertions.assertThat(stateMachine.canTransit(GENERATING_REPORT, CANCELLED)).isTrue();
+    }
+
+    @Test
+    void eachStateReturnsExpectedNextStates() {
+        Assertions.assertThat(stateMachine.nextStatuses(CREATED)).containsExactlyInAnyOrder(PARSING, CANCELLED, FAILED);
+        Assertions.assertThat(stateMachine.nextStatuses(COMPLETED)).isEmpty();
+        Assertions.assertThat(stateMachine.nextStatuses(CANCELLED)).isEmpty();
+        Assertions.assertThat(stateMachine.nextStatuses(FAILED)).containsExactlyInAnyOrder(PARSING, CANCELLED);
+        Assertions.assertThat(stateMachine.nextStatuses(WAITING_APPROVAL)).containsExactlyInAnyOrder(GENERATING_REPORT, FAILED, CANCELLED);
+    }
+
+    @Test
+    void everyDefinedFromStateHasAtLeastOneTarget() {
+        for (var status : AgentTaskStatus.values()) {
+            Assertions.assertThatCode(() -> stateMachine.nextStatuses(status)).doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void blocksInvalidApprovalSkip() {
+        Assertions.assertThat(stateMachine.canTransit(EXTRACTING, WAITING_APPROVAL)).isFalse();
+    }
+
+    @Test
+    void allowsRetryFromMultipleFailPoints() {
+        Assertions.assertThat(stateMachine.canTransit(EXTRACTING, FAILED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(RETRIEVING_RULES, FAILED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(ANALYZING, FAILED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(WAITING_APPROVAL, FAILED)).isTrue();
+        Assertions.assertThat(stateMachine.canTransit(GENERATING_REPORT, FAILED)).isTrue();
     }
 }

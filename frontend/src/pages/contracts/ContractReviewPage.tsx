@@ -1,6 +1,6 @@
 import { Alert, Button, Card, Descriptions, Skeleton, Tag, Typography } from 'antd';
-import { BranchesOutlined, FileTextOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { useCallback, useEffect, useState } from 'react';
+import { BranchesOutlined, FileTextOutlined, ExclamationCircleOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getContract, getOriginalText, type Contract } from '../../api/contract';
 import {
@@ -32,6 +32,7 @@ export default function ContractReviewPage() {
   const [review, setReview] = useState<ContractReview | null>(null);
   const [steps, setSteps] = useState<AgentStep[]>([]);
   const [risks, setRisks] = useState<ClauseRisk[]>([]);
+  const [riskIndex, setRiskIndex] = useState(0);
   const [trace, setTrace] = useState<ReviewTrace | null>(null);
   const [sseEvents, setSseEvents] = useState<ReviewEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -194,8 +195,17 @@ export default function ContractReviewPage() {
 
         {/* Middle: Risk points */}
         <div className="review-center">
-          <Card title={`风险点 (${risks.length})`}>
-            <RiskList risks={risks} />
+          <Card
+            title={`风险点 (${risks.length})`}
+            extra={risks.length > 1 ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Button size="small" icon={<LeftOutlined />} disabled={riskIndex === 0} onClick={() => setRiskIndex((i) => i - 1)} />
+                <span style={{ fontSize: 13, minWidth: 60, textAlign: 'center' }}>{riskIndex + 1} / {risks.length}</span>
+                <Button size="small" icon={<RightOutlined />} disabled={riskIndex >= risks.length - 1} onClick={() => setRiskIndex((i) => i + 1)} />
+              </div>
+            ) : undefined}
+          >
+            <RiskList risks={risks.slice(riskIndex, riskIndex + 1)} />
           </Card>
         </div>
 

@@ -39,12 +39,25 @@ body {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-shell .ant-layout {
+  overflow: hidden;
+}
+
+.app-shell > .ant-layout {
+  overflow-y: auto;
 }
 
 .side-nav {
   background: #102a43 !important;
   color: #f8fafc;
+  position: sticky !important;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
 }
 
 .side-brand {

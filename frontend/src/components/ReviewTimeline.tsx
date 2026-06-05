@@ -4,6 +4,7 @@ import {
   CloseCircleOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
+import { useEffect, useState } from 'react';
 import type { AgentStep, ClauseRisk, ContractReview, LlmCallLog, RetrievalLog, ReviewEvent } from '../api/review';
 
 const statusStepMap: Record<string, number> = {
@@ -46,6 +47,18 @@ const eventLabels: Record<string, string> = {
   CONTRACT_PARSE: '合同解析',
 };
 
+const statusLabels: Record<string, string> = {
+  RUNNING: '进行中',
+  COMPLETED: '已完成',
+  FAILED: '失败',
+};
+
+const statusColors: Record<string, string> = {
+  RUNNING: 'processing',
+  COMPLETED: 'success',
+  FAILED: 'error',
+};
+
 function parseJson<T>(value?: string): T | null {
   if (!value) return null;
   try {
@@ -63,6 +76,27 @@ function summarizeRetrieved(log: RetrievalLog) {
   }));
 }
 
+function formatMs(value: number) {
+  if (!Number.isFinite(value) || value < 0) return '-';
+  if (value < 1000) return `${Math.round(value)}ms`;
+  return `${(value / 1000).toFixed(value < 10000 ? 1 : 0)}s`;
+}
+
+function formatTime(value?: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  return date.toLocaleTimeString('zh-CN', { hour12: false });
+}
+
+function stepDuration(step: AgentStep, now: number) {
+  if (!step.startedAt) return 0;
+  const start = new Date(step.startedAt).getTime();
+  const end = step.finishedAt ? new Date(step.finishedAt).getTime() : now;
+  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
+  return Math.max(0, end - start);
+}
+
 type Props = {
   review: ContractReview | null;
   steps: AgentStep[];
@@ -73,11 +107,19 @@ type Props = {
 };
 
 export default function ReviewTimeline({ review, steps, sseEvents, retrievalLogs = [], llmCalls = [], risks = [] }: Props) {
+  const [now, setNow] = useState(Date.now());
   const currentStep = review ? statusStepMap[review.status] ?? 0 : 0;
   const latestRetrieval = retrievalLogs[retrievalLogs.length - 1];
   const latestReferences = latestRetrieval ? summarizeRetrieved(latestRetrieval) : [];
   const llmSuccessCount = llmCalls.filter((log) => log.success).length;
   const llmEnhancedRiskCount = risks.filter((risk) => parseJson<{ llmEnhanced?: boolean }>(risk.evidenceRules)?.llmEnhanced).length;
+  const hasRunningStep = steps.some((step) => step.status === 'RUNNING');
+
+  useEffect(() => {
+    if (!hasRunningStep) return undefined;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasRunningStep]);
 
   return (
     <>
@@ -109,10 +151,22 @@ export default function ReviewTimeline({ review, steps, sseEvents, retrievalLogs
               children: (
                 <>
                   <Typography.Text strong>{stepLabels[s.stepType] || s.stepType}</Typography.Text>
+                  <Tag color={statusColors[s.status] || 'default'} style={{ marginLeft: 8 }}>
+                    {statusLabels[s.status] || s.status}
+                  </Tag>
                   <br />
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {s.status}
+                    {formatTime(s.startedAt)} - {formatTime(s.finishedAt)}
+                    <span style={{ marginLeft: 8 }}>耗时 {formatMs(stepDuration(s, now))}</span>
                   </Typography.Text>
+                  {s.errorMessage && (
+                    <>
+                      <br />
+                      <Typography.Text type="danger" style={{ fontSize: 12 }}>
+                        {s.errorMessage}
+                      </Typography.Text>
+                    </>
+                  )}
                 </>
               ),
             }))}

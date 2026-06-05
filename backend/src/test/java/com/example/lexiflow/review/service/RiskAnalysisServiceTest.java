@@ -2,6 +2,7 @@ package com.example.lexiflow.review.service;
 
 import com.example.lexiflow.contract.model.ContractClause;
 import com.example.lexiflow.llm.model.StructuredOutputResponse;
+import com.example.lexiflow.llm.model.StructuredOutputRequest;
 import com.example.lexiflow.llm.model.TokenUsage;
 import com.example.lexiflow.llm.service.LlmGateway;
 import com.example.lexiflow.review.mapper.ClauseRiskMapper;
@@ -85,6 +86,92 @@ class RiskAnalysisServiceTest {
                 .anySatisfy(risk -> {
                     Assertions.assertThat(risk.getReason()).isEqualTo("LLM refined reason grounded in the payment clause.");
                     Assertions.assertThat(risk.getSuggestion()).isEqualTo("LLM refined suggestion with approval note.");
+                });
+    }
+
+    @Test
+    void includesClauseInsightFactsAndSignalsInLlmRiskPrompt() {
+        LlmGateway gateway = Mockito.mock(LlmGateway.class);
+        Mockito.when(gateway.structuredOutput(Mockito.any())).thenReturn(new StructuredOutputResponse(
+                Map.of(),
+                new TokenUsage(10, 8),
+                "mock",
+                "mock"
+        ));
+        RiskAnalysisService service = new RiskAnalysisService(Mockito.mock(ClauseRiskMapper.class), toolGuard(), gateway, 60, 1_000_000);
+        ContractClause payment = clause("PAYMENT_TERM", "Payment term", "Payment shall be made within 90 days.");
+        List<ContractReviewService.ClauseInsight> insights = List.of(new ContractReviewService.ClauseInsight(
+                "Payment term",
+                "PAYMENT_TERM",
+                "付款条款",
+                "Payment shall be made within 90 days.",
+                List.of("paymentDays=90"),
+                List.of("付款周期超过60日"),
+                "Payment shall be made within 90 days."
+        ));
+
+        service.analyze(1L, 2L, List.of(payment), List.of(), insights, user());
+
+        var captor = org.mockito.ArgumentCaptor.forClass(StructuredOutputRequest.class);
+        Mockito.verify(gateway, Mockito.atLeastOnce()).structuredOutput(captor.capture());
+        Assertions.assertThat(captor.getAllValues())
+                .anySatisfy(request -> Assertions.assertThat(request.chatRequest().messages().getLast().content())
+                        .contains("Clause insight")
+                        .contains("paymentDays=90")
+                        .contains("付款周期超过60日"));
+    }
+
+    @Test
+    void includesLlmDiscoveredHighRiskInAnalysisResults() {
+        RiskAnalysisService service = service();
+        ContractClause liability = clause("LIABILITY", "第九条 违约责任", "甲方责任不设上限，乙方责任以已付款5%为上限。");
+        RiskDiscoveryService.DiscoveredRisk discovered = new RiskDiscoveryService.DiscoveredRisk(
+                "UNBALANCED_LIABILITY",
+                "HIGH",
+                "第九条 违约责任",
+                "甲方责任不设上限，乙方责任以已付款5%为上限。",
+                "责任分配严重不对等。",
+                "建议设置对等责任上限。",
+                List.of("责任上限规则"),
+                0.91,
+                true
+        );
+
+        var risks = service.analyze(1L, 2L, List.of(liability), List.of(), List.of(), List.of(discovered), user());
+
+        Assertions.assertThat(risks)
+                .anySatisfy(risk -> {
+                    Assertions.assertThat(risk.getRiskType()).isEqualTo("UNBALANCED_LIABILITY");
+                    Assertions.assertThat(risk.getRiskLevel()).isEqualTo("HIGH");
+                    Assertions.assertThat(risk.getRequiresApproval()).isTrue();
+                    Assertions.assertThat(risk.getReason()).contains("责任分配严重不对等");
+                });
+    }
+
+    @Test
+    void doesNotAllowLlmEnhancementToDowngradeHighRisks() {
+        LlmGateway gateway = Mockito.mock(LlmGateway.class);
+        Mockito.when(gateway.structuredOutput(Mockito.any())).thenReturn(new StructuredOutputResponse(
+                Map.of(
+                        "reason", "LLM tried to soften this risk.",
+                        "suggestion", "Keep watching.",
+                        "riskLevel", "MEDIUM",
+                        "requiresApproval", false
+                ),
+                new TokenUsage(10, 8),
+                "mock",
+                "mock"
+        ));
+        RiskAnalysisService service = new RiskAnalysisService(Mockito.mock(ClauseRiskMapper.class), toolGuard(), gateway, 60, 1_000_000);
+        ContractClause liability = clause("LIABILITY", "第九条 违约责任", "Party B assumes unlimited liability with no cap.");
+
+        var risks = service.analyze(1L, 2L, List.of(liability), List.of(), user());
+
+        Assertions.assertThat(risks)
+                .anySatisfy(risk -> {
+                    Assertions.assertThat(risk.getRiskType()).isEqualTo("UNLIMITED_LIABILITY");
+                    Assertions.assertThat(risk.getRiskLevel()).isEqualTo("HIGH");
+                    Assertions.assertThat(risk.getRequiresApproval()).isTrue();
                 });
     }
 

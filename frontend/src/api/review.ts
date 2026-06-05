@@ -19,8 +19,11 @@ export type AgentStep = {
   status: string;
   inputSummary: string;
   outputSummary: string;
-  durationMs: number;
+  errorMessage?: string;
+  startedAt?: string;
+  finishedAt?: string;
   createdAt: string;
+  updatedAt?: string;
 };
 
 export type ClauseRisk = {
@@ -73,7 +76,7 @@ export type LlmCallLog = {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
-  latencyMs?: number;
+  latencyMs?: number | string;
   success: boolean;
   errorMessage?: string;
   createdAt: string;
@@ -85,7 +88,7 @@ export type ToolCallLog = {
   arguments: string;
   result: string;
   permissionResult: string;
-  latencyMs?: number;
+  latencyMs?: number | string;
   success: boolean;
   errorMessage?: string;
   createdAt: string;
@@ -96,7 +99,7 @@ export type RetrievalLog = {
   queryText: string;
   filterConditions: string;
   retrievedChunks: string;
-  latencyMs?: number;
+  latencyMs?: number | string;
   createdAt: string;
 };
 
@@ -120,7 +123,12 @@ export type ReviewTrace = {
     toolCallCount: number;
     retrievalCount: number;
     totalTokens: number;
-    totalLatencyMs: number;
+    totalLatencyMs: number | string;
+    stepDurationMs: number | string;
+    wallClockMs: number | string;
+    toolLatencyMs: number | string;
+    llmLatencyMs: number | string;
+    retrievalLatencyMs: number | string;
   };
 };
 

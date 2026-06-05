@@ -9,7 +9,7 @@ spring:
   data:
     redis:
       host: localhost
-      port: 6379
+      port: ${REDIS_PORT:7379}
       password: lexiflow
   rabbitmq:
     host: localhost
@@ -20,4 +20,3 @@ spring:
 logging:
   level:
     com.example.lexiflow: INFO
-

@@ -3,16 +3,21 @@ package com.example.lexiflow.review.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.example.lexiflow.common.util.JsonStrings;
 import com.example.lexiflow.contract.model.ContractClause;
+import com.example.lexiflow.llm.mapper.LlmCallLogMapper;
 import com.example.lexiflow.llm.model.ChatMessage;
 import com.example.lexiflow.llm.model.ChatRequest;
+import com.example.lexiflow.llm.model.LlmCallLog;
 import com.example.lexiflow.llm.model.StructuredOutputRequest;
 import com.example.lexiflow.llm.model.StructuredOutputResponse;
+import com.example.lexiflow.llm.model.TokenUsage;
 import com.example.lexiflow.llm.service.LlmGateway;
 import com.example.lexiflow.rag.service.RagRetrievalService.RetrievedChunk;
 import com.example.lexiflow.review.mapper.ClauseRiskMapper;
 import com.example.lexiflow.review.model.ClauseRisk;
 import com.example.lexiflow.security.CurrentUser;
 import com.example.lexiflow.tool.service.ToolPermissionGuard;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -21,6 +26,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,8 +40,22 @@ public class RiskAnalysisService {
     private final ClauseRiskMapper riskMapper;
     private final ToolPermissionGuard toolPermissionGuard;
     private final LlmGateway llmGateway;
+    private final LlmCallLogMapper llmCallLogMapper;
     private final int paymentTermWarningDays;
     private final double highAmountThreshold;
+
+    @Autowired
+    public RiskAnalysisService(ClauseRiskMapper riskMapper, ToolPermissionGuard toolPermissionGuard,
+                               LlmGateway llmGateway, LlmCallLogMapper llmCallLogMapper,
+                               @Value("${lexiflow.review.payment-term-warning-days:60}") int paymentTermWarningDays,
+                               @Value("${lexiflow.review.high-amount-threshold:1000000}") double highAmountThreshold) {
+        this.riskMapper = riskMapper;
+        this.toolPermissionGuard = toolPermissionGuard;
+        this.llmGateway = llmGateway;
+        this.llmCallLogMapper = llmCallLogMapper;
+        this.paymentTermWarningDays = paymentTermWarningDays;
+        this.highAmountThreshold = highAmountThreshold;
+    }
 
     public RiskAnalysisService(ClauseRiskMapper riskMapper, ToolPermissionGuard toolPermissionGuard,
                                LlmGateway llmGateway,
@@ -44,6 +64,7 @@ public class RiskAnalysisService {
         this.riskMapper = riskMapper;
         this.toolPermissionGuard = toolPermissionGuard;
         this.llmGateway = llmGateway;
+        this.llmCallLogMapper = null;
         this.paymentTermWarningDays = paymentTermWarningDays;
         this.highAmountThreshold = highAmountThreshold;
     }
@@ -51,11 +72,34 @@ public class RiskAnalysisService {
     @Transactional
     public List<ClauseRisk> analyze(Long reviewId, Long contractId, List<ContractClause> clauses,
                                     List<RetrievedChunk> references, CurrentUser user) {
+        return analyze(reviewId, contractId, clauses, references, List.of(), user);
+    }
+
+    @Transactional
+    public List<ClauseRisk> analyze(Long reviewId, Long contractId, List<ContractClause> clauses,
+                                    List<RetrievedChunk> references,
+                                    List<ContractReviewService.ClauseInsight> clauseInsights,
+                                    CurrentUser user) {
+        return analyze(reviewId, contractId, clauses, references, clauseInsights, List.of(), user);
+    }
+
+    @Transactional
+    public List<ClauseRisk> analyze(Long reviewId, Long contractId, List<ContractClause> clauses,
+                                    List<RetrievedChunk> references,
+                                    List<ContractReviewService.ClauseInsight> clauseInsights,
+                                    List<RiskDiscoveryService.DiscoveredRisk> discoveredRisks,
+                                    CurrentUser user) {
         toolPermissionGuard.requireAllowed("risk_analysis", user);
         Long userId = user.id();
         riskMapper.delete(new LambdaQueryWrapper<ClauseRisk>().eq(ClauseRisk::getReviewId, reviewId));
 
-        List<RiskCandidate> candidates = List.of(
+        List<RiskCandidate> candidates = new ArrayList<>();
+        if (discoveredRisks != null) {
+            discoveredRisks.stream()
+                    .map(risk -> discoveredRiskCandidate(risk, clauses, references))
+                    .forEach(candidates::add);
+        }
+        List.of(
                 paymentTermStrategy(clauses, references),
                 highAmountStrategy(clauses, references),
                 unlimitedLiabilityStrategy(clauses, references),
@@ -66,12 +110,13 @@ public class RiskAnalysisService {
                 disputeResolutionStrategy(clauses, references),
                 acceptanceStrategy(clauses, references),
                 autoRenewalStrategy(clauses, references)
-        ).stream().flatMap(Optional::stream).toList();
+        ).stream().flatMap(Optional::stream).forEach(candidates::add);
+        candidates = dedupe(candidates);
 
         List<ClauseRisk> risks = new ArrayList<>();
         for (RiskCandidate candidate : candidates) {
             ClauseRisk risk = build(reviewId, contractId, candidate, userId);
-            LlmEnhancement llmEnhancement = enhanceWithLlm(risk, references);
+            LlmEnhancement llmEnhancement = enhanceWithLlm(reviewId, risk, references, clauseInsights, userId);
             risk.setEvidenceRules(toEvidence(candidate.references(), llmEnhancement));
             riskMapper.insert(risk);
             risks.add(risk);
@@ -316,6 +361,60 @@ public class RiskAnalysisService {
         return clauses.stream().filter(clause -> type.equals(clause.getClauseType())).findFirst();
     }
 
+    private Optional<ContractClause> findByDiscoveredRisk(RiskDiscoveryService.DiscoveredRisk risk, List<ContractClause> clauses) {
+        return clauses.stream()
+                .filter(clause -> safe(clause.getClauseName()).equals(safe(risk.clauseName()))
+                        || (!safe(risk.clauseTextEvidence()).isBlank()
+                        && safe(clause.getClauseText()).contains(safe(risk.clauseTextEvidence()))))
+                .findFirst();
+    }
+
+    private RiskCandidate discoveredRiskCandidate(RiskDiscoveryService.DiscoveredRisk risk, List<ContractClause> clauses,
+                                                  List<RetrievedChunk> references) {
+        ContractClause clause = findByDiscoveredRisk(risk, clauses).orElse(null);
+        String level = normalizeRiskLevel(risk.riskLevel());
+        return new RiskCandidate(
+                clause,
+                safe(risk.riskType()).isBlank() ? "LLM_DISCOVERED_RISK" : risk.riskType(),
+                level,
+                safe(risk.reason()),
+                safe(risk.suggestion()),
+                references,
+                risk.requiresApproval() || "HIGH".equals(level)
+        );
+    }
+
+    private List<RiskCandidate> dedupe(List<RiskCandidate> candidates) {
+        List<RiskCandidate> deduped = new ArrayList<>();
+        for (RiskCandidate candidate : candidates) {
+            Optional<RiskCandidate> existing = deduped.stream()
+                    .filter(item -> sameRisk(item, candidate))
+                    .findFirst();
+            if (existing.isEmpty()) {
+                deduped.add(candidate);
+            } else if (riskRank(candidate.riskLevel()) > riskRank(existing.get().riskLevel())) {
+                deduped.remove(existing.get());
+                deduped.add(candidate);
+            }
+        }
+        return deduped;
+    }
+
+    private boolean sameRisk(RiskCandidate left, RiskCandidate right) {
+        return safe(left.riskType()).equals(safe(right.riskType()))
+                && safe(left.clause() == null ? "" : left.clause().getClauseName())
+                .equals(safe(right.clause() == null ? "" : right.clause().getClauseName()));
+    }
+
+    private int riskRank(String level) {
+        return switch (safe(level)) {
+            case "HIGH" -> 3;
+            case "MEDIUM" -> 2;
+            case "LOW" -> 1;
+            default -> 0;
+        };
+    }
+
     private Optional<Double> parseAmount(String text) {
         Matcher matcher = AMOUNT_PATTERN.matcher(safe(text));
         if (!matcher.find()) {
@@ -355,13 +454,16 @@ public class RiskAnalysisService {
         return risk;
     }
 
-    private LlmEnhancement enhanceWithLlm(ClauseRisk risk, List<RetrievedChunk> references) {
+    private LlmEnhancement enhanceWithLlm(Long reviewId, ClauseRisk risk, List<RetrievedChunk> references,
+                                          List<ContractReviewService.ClauseInsight> clauseInsights, Long userId) {
+        Instant start = Instant.now();
+        String prompt = riskPrompt(risk, references, clauseInsights);
         try {
             StructuredOutputResponse response = llmGateway.structuredOutput(new StructuredOutputRequest(
                     new ChatRequest("risk-analysis", null, List.of(
                             new ChatMessage(ChatMessage.Role.SYSTEM,
                                     "Improve the contract risk explanation. Do not invent law or facts. Return JSON fields reason, suggestion, riskLevel, requiresApproval."),
-                            new ChatMessage(ChatMessage.Role.USER, riskPrompt(risk, references))
+                            new ChatMessage(ChatMessage.Role.USER, prompt)
                     ), Map.of("temperature", 0)),
                     Map.of(
                             "type", "object",
@@ -375,19 +477,51 @@ public class RiskAnalysisService {
             ));
             Map<String, Object> data = response.data();
             applyLlmEnhancement(risk, data);
+            logLlmCall(reviewId, risk, prompt, response, Duration.between(start, Instant.now()).toMillis(), true, null, userId);
             return new LlmEnhancement(true, response.provider(), response.model());
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException ex) {
+            logLlmCall(reviewId, risk, prompt, null, Duration.between(start, Instant.now()).toMillis(), false, ex.getMessage(), userId);
             // The deterministic strategy result remains valid when LLM is unavailable, mock-only, or malformed.
             return new LlmEnhancement(false, null, null);
         }
     }
 
-    private String riskPrompt(ClauseRisk risk, List<RetrievedChunk> references) {
+    private String normalizeRiskLevel(String value) {
+        return List.of("LOW", "MEDIUM", "HIGH").contains(value) ? value : "MEDIUM";
+    }
+
+    private void logLlmCall(Long reviewId, ClauseRisk risk, String prompt, StructuredOutputResponse response,
+                            long latencyMs, boolean success, String errorMessage, Long userId) {
+        if (llmCallLogMapper == null) {
+            return;
+        }
+        TokenUsage usage = response == null ? null : response.usage();
+        LlmCallLog log = new LlmCallLog();
+        log.setReviewId(reviewId);
+        log.setProvider(response == null ? null : response.provider());
+        log.setModelName(response == null ? null : response.model());
+        log.setPromptVersion("risk-analysis");
+        log.setRequestBody("{\"scenario\":\"risk-analysis\",\"riskType\":"
+                + JsonStrings.quote(risk.getRiskType()) + ",\"prompt\":" + JsonStrings.quote(prompt) + "}");
+        log.setResponseBody("{\"data\":" + JsonStrings.quote(response == null ? null : String.valueOf(response.data())) + "}");
+        log.setPromptTokens(usage == null ? null : usage.promptTokens());
+        log.setCompletionTokens(usage == null ? null : usage.completionTokens());
+        log.setTotalTokens(usage == null ? null : usage.totalTokens());
+        log.setLatencyMs(latencyMs);
+        log.setSuccess(success);
+        log.setErrorMessage(errorMessage);
+        log.setCreatedBy(userId);
+        llmCallLogMapper.insert(log);
+    }
+
+    private String riskPrompt(ClauseRisk risk, List<RetrievedChunk> references,
+                              List<ContractReviewService.ClauseInsight> clauseInsights) {
         return "Risk type: " + safe(risk.getRiskType())
                 + "\nRisk level: " + safe(risk.getRiskLevel())
                 + "\nRequires approval: " + risk.getRequiresApproval()
                 + "\nClause name: " + safe(risk.getClauseName())
                 + "\nClause text: " + safe(risk.getClauseText())
+                + "\nClause insight:\n" + relatedInsights(risk, clauseInsights)
                 + "\nInitial reason: " + safe(risk.getReason())
                 + "\nInitial suggestion: " + safe(risk.getSuggestion())
                 + "\nReferences:\n" + references.stream()
@@ -395,6 +529,40 @@ public class RiskAnalysisService {
                 .map(RetrievedChunk::content)
                 .reduce((left, right) -> left + "\n---\n" + right)
                 .orElse("");
+    }
+
+    private String relatedInsights(ClauseRisk risk, List<ContractReviewService.ClauseInsight> clauseInsights) {
+        if (clauseInsights == null || clauseInsights.isEmpty()) {
+            return "";
+        }
+        return clauseInsights.stream()
+                .filter(insight -> safe(risk.getClauseName()).equals(safe(insight.clauseName()))
+                        || (!safe(insight.evidence()).isBlank() && safe(risk.getClauseText()).contains(safe(insight.evidence())))
+                        || riskTypeMatchesInsight(risk.getRiskType(), insight.clauseType()))
+                .limit(3)
+                .map(insight -> "- " + insight.clauseTypeLabel()
+                        + " | " + insight.clauseName()
+                        + " | summary=" + insight.summary()
+                        + " | facts=" + insight.keyFacts()
+                        + " | signals=" + insight.riskSignals())
+                .reduce((left, right) -> left + "\n" + right)
+                .orElse("");
+    }
+
+    private boolean riskTypeMatchesInsight(String riskType, String clauseType) {
+        return switch (safe(riskType)) {
+            case "PAYMENT_TERM_TOO_LONG" -> "PAYMENT_TERM".equals(clauseType);
+            case "HIGH_CONTRACT_AMOUNT" -> "AMOUNT".equals(clauseType);
+            case "UNLIMITED_LIABILITY" -> "LIABILITY".equals(clauseType) || "LIABILITY_CAP".equals(clauseType);
+            case "MISSING_DATA_PROTECTION" -> "DATA_PROTECTION".equals(clauseType);
+            case "MISSING_TERMINATION_CLAUSE" -> "TERMINATION".equals(clauseType);
+            case "WEAK_CONFIDENTIALITY" -> "CONFIDENTIALITY".equals(clauseType);
+            case "IP_OWNERSHIP_UNCLEAR" -> "INTELLECTUAL_PROPERTY".equals(clauseType);
+            case "MISSING_DISPUTE_RESOLUTION", "UNCLEAR_DISPUTE_RESOLUTION" -> "DISPUTE_RESOLUTION".equals(clauseType);
+            case "MISSING_ACCEPTANCE", "WEAK_ACCEPTANCE" -> "ACCEPTANCE".equals(clauseType);
+            case "AUTO_RENEWAL_RISK" -> "AUTO_RENEWAL".equals(clauseType);
+            default -> false;
+        };
     }
 
     private void applyLlmEnhancement(ClauseRisk risk, Map<String, Object> data) {
@@ -407,7 +575,8 @@ public class RiskAnalysisService {
         if (data.get("suggestion") instanceof String suggestion && !suggestion.isBlank()) {
             risk.setSuggestion(suggestion);
         }
-        if (data.get("riskLevel") instanceof String riskLevel && List.of("LOW", "MEDIUM", "HIGH").contains(riskLevel)) {
+        if (data.get("riskLevel") instanceof String riskLevel && List.of("LOW", "MEDIUM", "HIGH").contains(riskLevel)
+                && riskRank(riskLevel) >= riskRank(risk.getRiskLevel())) {
             risk.setRiskLevel(riskLevel);
         }
         if (data.get("requiresApproval") instanceof Boolean requiresApproval) {

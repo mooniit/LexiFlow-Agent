@@ -17,6 +17,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,6 +26,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ContractService {
+
+    private static final Pattern BUYER_PATTERN = Pattern.compile("(?m)^\\s*乙方(?:（买方）|\\(买方\\))?\\s*[:：]\\s*([^\\r\\n]+)");
+    private static final Pattern AMOUNT_WITH_SYMBOL_PATTERN = Pattern.compile("[￥¥]\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*元?");
+    private static final Pattern CONTRACT_AMOUNT_PATTERN = Pattern.compile("(?i)(?:合同总金额|本合同总金额|总金额|合同金额)[^\\r\\n]{0,40}?([0-9][0-9,]{3,}(?:\\.[0-9]+)?)\\s*元");
 
     private final ContractMapper contractMapper;
     private final StorageProperties storageProperties;
@@ -66,7 +72,11 @@ public class ContractService {
             contract.setMetadata("{}");
             contract.setCreatedBy(user.id());
             contract.setUpdatedBy(user.id());
-            applyParseResult(contract, textParser.parse(contract));
+            ContractTextParser.ParseResult parseResult = textParser.parse(contract);
+            if (parseResult.success()) {
+                validateSubmittedMetadata(contractAmount, customerName, extractFacts(parseResult.text()));
+            }
+            applyParseResult(contract, parseResult);
             contractMapper.insert(contract);
             return contract;
         } catch (IOException ex) {
@@ -142,6 +152,55 @@ public class ContractService {
             contract.setStatus(ContractStatus.PARSE_FAILED.name());
             contract.setMetadata("{\"parse_failure\":" + JsonStrings.quote(result.message()) + "}");
         }
+    }
+
+    static ExtractedContractFacts extractFacts(String text) {
+        if (!StringUtils.hasText(text)) {
+            return new ExtractedContractFacts(null, null);
+        }
+        return new ExtractedContractFacts(extractCustomerName(text), extractContractAmount(text));
+    }
+
+    static void validateSubmittedMetadata(BigDecimal submittedAmount, String submittedCustomerName,
+                                          ExtractedContractFacts facts) {
+        if (facts == null) {
+            return;
+        }
+        if (submittedAmount != null && facts.contractAmount() != null
+                && submittedAmount.compareTo(facts.contractAmount()) != 0) {
+            throw new IllegalArgumentException("contractAmount does not match contract text. parsed="
+                    + facts.contractAmount().toPlainString() + ", submitted=" + submittedAmount.toPlainString());
+        }
+        if (StringUtils.hasText(submittedCustomerName) && StringUtils.hasText(facts.customerName())
+                && !normalizeName(submittedCustomerName).equals(normalizeName(facts.customerName()))) {
+            throw new IllegalArgumentException("customerName does not match contract text. parsed="
+                    + facts.customerName() + ", submitted=" + submittedCustomerName);
+        }
+    }
+
+    private static String extractCustomerName(String text) {
+        Matcher matcher = BUYER_PATTERN.matcher(text);
+        return matcher.find() ? matcher.group(1).trim() : null;
+    }
+
+    private static BigDecimal extractContractAmount(String text) {
+        Matcher matcher = AMOUNT_WITH_SYMBOL_PATTERN.matcher(text);
+        boolean found = matcher.find();
+        if (!found) {
+            matcher = CONTRACT_AMOUNT_PATTERN.matcher(text);
+            found = matcher.find();
+        }
+        if (!found) {
+            return null;
+        }
+        return new BigDecimal(matcher.group(1).replace(",", ""));
+    }
+
+    private static String normalizeName(String value) {
+        return value == null ? "" : value.replaceAll("\\s+", "").trim();
+    }
+
+    record ExtractedContractFacts(String customerName, BigDecimal contractAmount) {
     }
 
     private String resolveFileType(String filename) {

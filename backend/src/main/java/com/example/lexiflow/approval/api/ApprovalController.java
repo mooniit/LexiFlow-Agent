@@ -2,8 +2,10 @@ package com.example.lexiflow.approval.api;
 
 import com.example.lexiflow.approval.model.ApprovalHistory;
 import com.example.lexiflow.approval.model.ApprovalRequest;
+import com.example.lexiflow.approval.service.ApprovalEventMessage;
 import com.example.lexiflow.approval.service.ApprovalService;
 import com.example.lexiflow.common.model.ApiResponse;
+import com.example.lexiflow.review.service.ContractReviewService;
 import com.example.lexiflow.security.CurrentUser;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -21,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ApprovalController {
 
     private final ApprovalService approvalService;
+    private final ContractReviewService reviewService;
 
-    public ApprovalController(ApprovalService approvalService) {
+    public ApprovalController(ApprovalService approvalService, ContractReviewService reviewService) {
         this.approvalService = approvalService;
+        this.reviewService = reviewService;
     }
 
     @GetMapping
@@ -44,21 +48,27 @@ public class ApprovalController {
 
     @PostMapping("/{id}/approve")
     public ApiResponse<ApprovalRequest> approve(@PathVariable Long id, @Valid @RequestBody ApprovalActionRequest request,
-                                                @AuthenticationPrincipal CurrentUser user) {
-        return ApiResponse.ok(approvalService.approve(id, request.comment(), user));
+                                                 @AuthenticationPrincipal CurrentUser user) {
+        ApprovalRequest approval = approvalService.approve(id, request.comment(), user);
+        applyApprovalEvent(approval, "APPROVED", request.comment(), user);
+        return ApiResponse.ok(approval);
     }
 
     @PostMapping("/{id}/reject")
     public ApiResponse<ApprovalRequest> reject(@PathVariable Long id, @Valid @RequestBody ApprovalActionRequest request,
-                                               @AuthenticationPrincipal CurrentUser user) {
-        return ApiResponse.ok(approvalService.reject(id, request.comment(), user));
+                                                @AuthenticationPrincipal CurrentUser user) {
+        ApprovalRequest approval = approvalService.reject(id, request.comment(), user);
+        applyApprovalEvent(approval, "REJECTED", request.comment(), user);
+        return ApiResponse.ok(approval);
     }
 
     @PostMapping("/{id}/request-revision")
     public ApiResponse<ApprovalRequest> requestRevision(@PathVariable Long id,
-                                                        @Valid @RequestBody ApprovalActionRequest request,
-                                                        @AuthenticationPrincipal CurrentUser user) {
-        return ApiResponse.ok(approvalService.requestRevision(id, request.comment(), user));
+                                                         @Valid @RequestBody ApprovalActionRequest request,
+                                                         @AuthenticationPrincipal CurrentUser user) {
+        ApprovalRequest approval = approvalService.requestRevision(id, request.comment(), user);
+        applyApprovalEvent(approval, "REVISION_REQUESTED", request.comment(), user);
+        return ApiResponse.ok(approval);
     }
 
     @PostMapping("/{id}/escalate")
@@ -71,5 +81,16 @@ public class ApprovalController {
     }
 
     public record EscalateRequest(Long approverId, String comment) {
+    }
+
+    private void applyApprovalEvent(ApprovalRequest approval, String action, String comment, CurrentUser user) {
+        reviewService.handleApprovalEvent(new ApprovalEventMessage(
+                approval.getId(),
+                approval.getReviewId(),
+                user.id(),
+                user.username(),
+                action,
+                comment
+        ));
     }
 }
